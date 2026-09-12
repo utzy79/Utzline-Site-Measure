@@ -74,7 +74,14 @@
 // .redline.json), matching the app's current name -- Open project still
 // accepts old .redline.json files saved before the rename, so nobody's
 // existing saves are stranded by this.)
-var CACHE_NAME = "redline-cache-v13";
+// (v14: added a Share button that hands the finished plan (the same
+// flattened PDF Save produces) straight to the device's own share sheet --
+// Messages, WhatsApp, email, whatever's installed -- instead of a
+// save-then-attach round trip. Only shows up where the browser actually
+// supports sharing files this way (Android Chrome/TWA, and some desktop
+// browsers); stays hidden everywhere else rather than appearing and then
+// failing.)
+var CACHE_NAME = "redline-cache-v14";
 
 var PRECACHE_URLS = [
   "./",

@@ -508,6 +508,10 @@
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3.5 3.5h9.6l3.4 3.4v9.1a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1v-11.5a1 1 0 0 1 1-1z"/><path d="M6 3.5v4.2h6v-4.2"/><rect x="6" y="11.3" width="8" height="5.2" rx="0.6"/></svg>
       Save
     </button>
+    <button class="tbtn" id="shareBtn" title="Share the finished plan straight to Messages, WhatsApp, email, etc. (sends the same flattened PDF Save produces — falls back to a PNG photo if PDF export can't load)" style="display:none;">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v8"/><path d="M6.5 6.5L10 3l3.5 3.5"/><path d="M4.5 10.5v4a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-4"/></svg>
+      Share
+    </button>
     <button class="ibtn" id="exitAppBtn" title="Exit app" aria-label="Exit app" style="display:none;">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2H4.8a1 1 0 0 0-1 1v11.6a1 1 0 0 0 1 1H8"/><path d="M7.8 10h8.4M12.8 6.2l3.8 3.8-3.8 3.8"/></svg>
     </button>
@@ -3662,6 +3666,66 @@
       });
     });
   }
+
+  // ---- Share: hands the finished plan straight to the device's own share
+  // sheet (Messages, WhatsApp, email, Drive, whatever's installed) instead
+  // of a save-then-go-find-it-and-attach round trip. Only where the Web
+  // Share API (with file support) actually exists -- Android Chrome/TWA and
+  // some desktop browsers; Firefox and others simply never show the button.
+  // Shares the same flattened PDF Save produces (real vector text/lines,
+  // sharp at any zoom) so there's exactly one "send this to someone" file
+  // shape across the app, falling back to a flattened PNG in the same
+  // situations Save's own PDF half already falls back for. ----
+  function isShareSupported(){
+    return typeof navigator.share === "function";
+  }
+  function shareFile(file){
+    var shareData = { files: [file] };
+    if (navigator.canShare && !navigator.canShare(shareData)){
+      showToast("Sharing files isn't supported here — use Save instead.");
+      return;
+    }
+    navigator.share(shareData).catch(function(err){
+      // AbortError just means the person closed the share sheet without
+      // picking anything -- they cancelled on purpose, not a failure.
+      if (err && err.name === "AbortError") return;
+      showToast("Couldn't open the share screen — try again, or use Save instead.");
+    });
+  }
+  function shareAsPngFallback(reasonPrefix){
+    renderExportBlob().then(function(blob){
+      shareFile(new File([blob], suggestFilename("png", true), { type: "image/png" }));
+    }).catch(function(){
+      showToast(reasonPrefix + "couldn't prepare a file to share.");
+    });
+  }
+  function shareCurrentPlanNow(){
+    renderExportPdfBlob().then(function(blob){
+      shareFile(new File([blob], suggestFilename("pdf", true), { type: "application/pdf" }));
+    }).catch(function(err){
+      console.error("Share (PDF) failed:", err);
+      shareAsPngFallback("Couldn't build the PDF — ");
+    });
+  }
+  function shareCurrentPlan(){
+    if (!state.imageW){ showToast("Open a plan or photo first."); return; }
+    if (window.__pdfLibFailed){ shareAsPngFallback("PDF export couldn't load (network/firewall) — "); return; }
+    if (!pdfLibsReady()){
+      showToast("Preparing to share…");
+      waitForPdfLibs(8000).then(function(ready){
+        if (window.__pdfLibFailed){ shareAsPngFallback("PDF export couldn't load (network/firewall) — "); return; }
+        if (!ready){ showToast("Still loading — try Share again in a moment."); return; }
+        shareCurrentPlanNow();
+      });
+      return;
+    }
+    shareCurrentPlanNow();
+  }
+  var shareBtn = document.getElementById("shareBtn");
+  if (isShareSupported()){
+    shareBtn.style.display = "";
+  }
+  shareBtn.addEventListener("click", shareCurrentPlan);
 
   /* ============================== resize ============================== */
   window.addEventListener("resize", function(){ applyView(); });
