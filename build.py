@@ -62,6 +62,20 @@ LOCAL_FONT_FACE_BLOCK = (
 )
 
 PWA_HEAD_TAGS = (
+    # Without this, mobile browsers (Chrome on Android included, inside the
+    # installed TWA) fall back to laying the page out at a virtual desktop
+    # width (~980px) and then zooming the whole thing out to fit the real
+    # screen -- everything looks small, and CSS media queries keyed to the
+    # real device width (like the phone-toolbar layout below) never match,
+    # so portrait falls back to the cramped multi-row wrap layout instead of
+    # the intended single scrolling row of full-size buttons. Landscape
+    # happens to look "close enough" without this fix purely because a
+    # landscape phone's width is already closer to that assumed 980px, not
+    # because anything is actually working correctly. The claude.ai Artifact
+    # preview never showed this bug because the Artifact platform inserts
+    # its own viewport meta tag automatically -- this self-hosted PWA build
+    # has to do it explicitly.
+    '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
     '<link rel="manifest" href="./manifest.json">\n'
     '<meta name="theme-color" content="#1b2224">\n'
     '<link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">\n'

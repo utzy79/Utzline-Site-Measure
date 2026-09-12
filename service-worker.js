@@ -92,7 +92,20 @@
 // file-name button (next to Save) that lets you rename the current plan at
 // any time -- Save, Save PDF, Share and auto-backup all pick up the name
 // you set instead of only ever using whatever the source file was called.)
-var CACHE_NAME = "redline-cache-v15";
+// (v16: found the real cause of the phone toolbar looking small/cramped in
+// portrait -- this self-hosted build had no <meta name="viewport"> tag at
+// all, so mobile browsers (Chrome on Android inside the installed app
+// included) laid the page out at a virtual desktop width and zoomed the
+// whole thing out to fit the real screen. Everything looked smaller, and
+// worse, the CSS rule meant to keep the phone toolbar at full size in one
+// scrolling row (added back in v7) never matched, since it's keyed to the
+// real device width -- so portrait fell back to the cramped multi-row wrap
+// layout instead. Landscape looked fine only because a landscape phone's
+// width happens to be close to that assumed desktop width anyway, not
+// because anything was actually working. Added the missing viewport tag;
+// this didn't show up in the claude.ai Artifact preview because that
+// platform inserts its own viewport tag automatically.)
+var CACHE_NAME = "redline-cache-v16";
 
 var PRECACHE_URLS = [
   "./",
