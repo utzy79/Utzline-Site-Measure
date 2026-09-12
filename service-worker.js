@@ -117,7 +117,18 @@
 // editing tools on top, file/plan actions below -- each its own full-size,
 // independently side-scrolling row, so there's a lot less swiping to reach
 // any one button. Tablet/desktop layout is untouched by this.)
-var CACHE_NAME = "redline-cache-v18";
+// (v19: found a real quality bug by comparing a screenshot of the app
+// against a screenshot of an exported PDF opened in a different PDF
+// viewer -- every dimension/label/callout/text object in an exported PDF
+// was coming out in a plain substitute font (Helvetica/Courier) instead of
+// the app's actual IBM Plex Sans/Mono. svg2pdf.js can only use a font
+// jsPDF already knows about, and jsPDF's built-in fonts don't include IBM
+// Plex, so it silently substituted one -- confirmed directly by inspecting
+// an exported PDF's fonts (none of the real ones were embedded at all).
+// Now registers the genuine fonts (converted losslessly from the exact
+// same files the app already uses on screen) with jsPDF, so exported/
+// shared PDFs actually match what the app shows.)
+var CACHE_NAME = "redline-cache-v19";
 
 var PRECACHE_URLS = [
   "./",
