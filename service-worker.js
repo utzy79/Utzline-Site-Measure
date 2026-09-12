@@ -44,7 +44,23 @@
 // ANYTHING, so it was a complete silent no-op on every mobile browser
 // despite the toggle looking like a working feature -- it now falls back
 // to a plain download of both files, same as Save's own fallback.)
-var CACHE_NAME = "redline-cache-v9";
+// (v10: the auto-backup "choose a folder" button was showing up on an
+// actual Android phone -- Chrome for Android has started exposing the
+// underlying showDirectoryPicker API on at least some devices, even though
+// this feature was always meant to be desktop-only (its own tooltip has
+// always said "Chrome/Edge desktop only") and picking a folder through it
+// on Android -- especially a cloud-storage app's folder via Android's
+// document-provider system -- is exactly what produced the earlier 0-byte-
+// write bug report. It's now hidden on anything that looks like a mobile
+// device regardless of what the API itself claims to support.)
+// (v11: selecting an inserted photo/image showed a "Color" picker in the
+// side panel that silently did nothing when clicked -- images were always
+// designed to have no color to tint (the border is a fixed white/black
+// halo, same as everything else's outline underneath its actual color),
+// but the panel had no gate keeping that picker from showing up for images
+// anyway. It's now hidden for images specifically; every other object type
+// is unaffected.)
+var CACHE_NAME = "redline-cache-v11";
 
 var PRECACHE_URLS = [
   "./",

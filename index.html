@@ -924,11 +924,25 @@
   var autoBackupLocked = false;
   try{ autoBackupLocked = localStorage.getItem("redline_autobackup_locked") === "1"; }catch(e){}
   // ---- optional direct-to-folder backup target (File System Access API) ----
-  // Chrome/Edge desktop only (Firefox, Safari, and mobile browsers have no
-  // showDirectoryPicker at all) -- feature-detected once here so the UI can
-  // just hide the button everywhere else rather than offering something
-  // that would immediately fail.
-  var backupDirSupported = typeof window.showDirectoryPicker === "function";
+  // Meant for Chrome/Edge DESKTOP only. This used to be a plain
+  // typeof-check on showDirectoryPicker, on the assumption that mobile
+  // browsers never expose it at all -- true for a long time, but Chrome for
+  // Android has since started exposing it on at least some versions/
+  // devices, even though picking a real folder there (especially a
+  // cloud-storage app's folder via Android's document-provider system,
+  // e.g. Dropbox) is exactly the kind of path that produced a real 0-byte-
+  // write bug report -- Android's underlying storage plumbing for this API
+  // isn't the same reliable local-folder access it is on desktop. So this
+  // now ALSO excludes anything that looks like a mobile device, regardless
+  // of what the API itself claims to support, matching what this feature's
+  // own tooltip has always promised ("Chrome/Edge desktop only").
+  function isLikelyMobileDevice(){
+    try{
+      if (navigator.userAgentData && typeof navigator.userAgentData.mobile === "boolean") return navigator.userAgentData.mobile;
+    }catch(e){}
+    return /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent || "");
+  }
+  var backupDirSupported = typeof window.showDirectoryPicker === "function" && !isLikelyMobileDevice();
   var backupDirHandle = null;
   var backupDirPermissionOK = false;
   var backupDirName = "";
@@ -2499,6 +2513,16 @@
     var styleType = obj ? obj.type : state.tool;
     var curColor = obj ? obj.color : defaultColorFor(styleType);
 
+    // color row -- doesn't apply to a pasted/inserted image: there's
+    // nothing to tint, the image IS the content (see makeImage() above),
+    // so its border is always just the neutral white/black halo every
+    // other shape's border also gets underneath its actual color. Showing
+    // a color picker here anyway used to silently do nothing when clicked
+    // (it wrote obj.color, but the image renderer never reads it) -- which
+    // read exactly like a real "the color picker doesn't work" bug rather
+    // than a control that was never supposed to be there for a photo.
+    var hasColor = styleType !== "image";
+    if (hasColor){
     // color row
     var row = document.createElement("div"); row.className = "panel-row";
     var lab = document.createElement("span"); lab.className = "panel-label"; lab.textContent = "Color";
@@ -2531,13 +2555,14 @@
       sw.appendChild(d);
     });
     row.appendChild(sw); panel.appendChild(row);
+    }
 
     // "Make default" -- only worth showing once there's a selected object
     // whose color actually differs from ITS TYPE's current default
     // (otherwise there'd be nothing for the button to do). Only that one
     // type's default changes -- a callout's default stays whatever it was
     // even after this makes red the new default for dimensions, say.
-    if (obj && obj.color !== defaultColorFor(styleType)){
+    if (hasColor && obj && obj.color !== defaultColorFor(styleType)){
       var mkDef = document.createElement("button");
       mkDef.className = "make-default-btn";
       mkDef.title = "Use this color for new " + styleType + " objects too";
