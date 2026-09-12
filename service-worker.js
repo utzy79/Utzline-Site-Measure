@@ -128,7 +128,14 @@
 // Now registers the genuine fonts (converted losslessly from the exact
 // same files the app already uses on screen) with jsPDF, so exported/
 // shared PDFs actually match what the app shows.)
-var CACHE_NAME = "redline-cache-v19";
+// (v20: added a manual light/dark toggle (new "?"-adjacent button in the
+// toolbar). Previously the app only ever mirrored the device/browser's own
+// dark-mode setting with no way to override it -- some phones and browsers
+// report that preference inconsistently, which is exactly what made the
+// app look unexpectedly light on one such setup. Cycles system (matches
+// your device, same as before) -> light -> dark -> back to system, and
+// remembers the choice for next time.)
+var CACHE_NAME = "redline-cache-v20";
 
 var PRECACHE_URLS = [
   "./",

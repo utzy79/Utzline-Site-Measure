@@ -37,6 +37,21 @@
      plain-script-tag loading pattern. -->
 <script>window.__pdfImportLibFailed = false;</script>
 <script src="./pdf.min.js" onerror="window.__pdfImportLibFailed = true;"></script>
+<!-- Manual light/dark override: applied synchronously here, before the
+     stylesheet below and any content paints, so switching -- or just
+     loading a saved choice -- never flashes the wrong theme first. No
+     saved preference (the default) leaves no attribute set, so the
+     prefers-color-scheme media query below keeps deciding exactly as it
+     always did before this toggle existed. -->
+<script>
+  (function(){
+    var saved = null;
+    try{ saved = localStorage.getItem("redline_theme"); }catch(e){}
+    if (saved === "light" || saved === "dark"){
+      document.documentElement.setAttribute("data-theme", saved);
+    }
+  })();
+</script>
 <style>
   :root{
     --surface-0:#eef0ee;
@@ -524,6 +539,9 @@
       <button class="ibtn" id="showHintBtn" title="Show the quick-help tip again (drag/pan/zoom controls)" aria-label="Show quick help tip">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.2"/><path d="M7.8 7.6a2.2 2.2 0 1 1 3.1 2c-.7.5-1.1.9-1.1 1.9"/><circle cx="10" cy="14" r="0.15" fill="currentColor"/></svg>
       </button>
+      <!-- Icon + title/aria-label are set by setupThemeToggle() on load,
+           since they depend on the current mode (system/light/dark). -->
+      <button class="ibtn" id="themeToggleBtn" title="Appearance" aria-label="Appearance"></button>
     </div>
     </div><!-- /toolbarRow1 -->
 
@@ -897,6 +915,44 @@
     hintDismissed = false; hintForceShow = true;
     renderAll();
   });
+  // Manual light/dark toggle. "System" (the default -- no data-theme
+  // attribute at all) leaves the prefers-color-scheme media query in
+  // charge, same as before this toggle existed; "Light"/"Dark" pin it
+  // regardless of the device's own setting. The actual attribute is also
+  // set synchronously in a tiny inline script right before the stylesheet,
+  // near the top of the file, so a saved choice applies before first
+  // paint -- this just keeps the button's own icon/label in sync and
+  // handles clicks.
+  (function setupThemeToggle(){
+    var btn = document.getElementById("themeToggleBtn");
+    var ICONS = {
+      system: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.2" width="15" height="9.6" rx="1.3"/><path d="M7 16.8h6M10 13.8v3"/></svg>',
+      light: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="3.4"/><path d="M10 2.6v2M10 15.4v2M17.4 10h-2M4.6 10h-2M15.2 4.8l-1.4 1.4M6.2 13.8l-1.4 1.4M15.2 15.2l-1.4-1.4M6.2 6.2L4.8 4.8"/></svg>',
+      dark: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.8 12.4A7 7 0 0 1 7.6 3.2a7 7 0 1 0 9.2 9.2z"/></svg>'
+    };
+    var LABELS = { system: "Match device", light: "Light", dark: "Dark" };
+    var ORDER = ["system", "light", "dark"];
+    function currentTheme(){
+      var attr = document.documentElement.getAttribute("data-theme");
+      return (attr === "light" || attr === "dark") ? attr : "system";
+    }
+    function apply(theme){
+      if (theme === "system") document.documentElement.removeAttribute("data-theme");
+      else document.documentElement.setAttribute("data-theme", theme);
+      try{
+        if (theme === "system") localStorage.removeItem("redline_theme");
+        else localStorage.setItem("redline_theme", theme);
+      }catch(e){}
+      btn.innerHTML = ICONS[theme];
+      var label = "Appearance: " + LABELS[theme] + " (tap to change)";
+      btn.title = label;
+      btn.setAttribute("aria-label", label);
+    }
+    apply(currentTheme());
+    btn.addEventListener("click", function(){
+      apply(ORDER[(ORDER.indexOf(currentTheme()) + 1) % ORDER.length]);
+    });
+  })();
   var zoomLabel = document.getElementById("zoomLabel");
   var dimLabel = document.getElementById("dimLabel");
   var toast = document.getElementById("toast");
