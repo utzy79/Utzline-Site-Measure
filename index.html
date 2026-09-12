@@ -133,6 +133,9 @@
   }
   .sep{width:1px; align-self:stretch; background:var(--border); margin:2px 4px;}
   .spacer{flex:1;}
+  /* Invisible to layout except inside the phone media query below, where it
+     becomes each half's own scrolling row -- see that rule for why. */
+  .toolbar-row{display:contents;}
   .ibtn{
     display:flex; align-items:center; justify-content:center;
     width:32px; height:32px;
@@ -213,13 +216,31 @@
 
   .empty-hint{
     position:absolute; left:50%; top:14px; transform:translateX(-50%);
+    max-width:calc(100vw - 24px);
     background:var(--surface-1); border:1px solid var(--border);
     box-shadow:var(--shadow); border-radius:8px;
-    padding:6px 12px; font-size:11.5px; color:var(--text-secondary);
+    padding:6px 8px 6px 12px; font-size:11.5px; color:var(--text-secondary);
     display:flex; align-items:center; gap:8px; z-index:5;
-    pointer-events:none;
+    /* Used to be pointer-events:none (so a drag starting here would pass
+       straight through to draw on the plan underneath) -- but that also
+       meant there was no way to dismiss it short of drawing something or
+       switching tools, so on a freshly-opened plan it could sit there
+       blocking the view indefinitely. Now it captures its own touches (for
+       the close button below and swipe-to-dismiss), while still handing
+       off anything that isn't a small tap/swipe -- see the touch handlers
+       further down -- so it doesn't meaningfully get in the way of drawing
+       right underneath it. */
+    pointer-events:auto;
+    touch-action:pan-y;
   }
   .empty-hint b{color:var(--accent); font-weight:600;}
+  .empty-hint-close{
+    flex:none; width:20px; height:20px; border-radius:50%;
+    border:none; background:transparent; color:var(--text-secondary);
+    font-size:15px; line-height:1; cursor:pointer; padding:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .empty-hint-close:hover{background:var(--surface-2); color:var(--text-primary);}
 
   /* ---------- floating status ---------- */
   .status{
@@ -400,20 +421,34 @@
        comfortable size. On a phone-narrow screen there isn't room for that
        -- wrapping just squashes each row shorter and shorter until buttons
        overlap/crowd each other, which is the "too small to use" complaint.
-       Instead, keep everything at a full, easy-to-tap size in ONE row and
-       let that row scroll sideways -- swipe to reach whatever's off to the
-       right, rather than everything shrinking to fit. The brand name above
+       A single row that scrolls sideways fixed that, but left everything
+       on one long strip you had to keep swiping across. Splitting it into
+       its two natural halves -- editing tools (toolbarRow1) above, file/
+       plan actions (toolbarRow2) below -- keeps every button at full,
+       easy-to-tap size while cutting how far you ever need to swipe in
+       one direction, and each half scrolls independently. .toolbar-row is
+       plain display:contents everywhere else (see its base rule above),
+       so this only changes anything at phone widths. The brand name above
        is hidden here too since it was just taking up scroll space for no
        functional purpose on a phone. */
     .toolbar{
+      flex-direction:column;
+      align-items:stretch;
+      flex-wrap:nowrap;
+      overflow:visible;
+    }
+    .toolbar-row{
+      display:flex;
+      align-items:center;
+      gap:6px;
       flex-wrap:nowrap;
       overflow-x:auto;
       -webkit-overflow-scrolling:touch;
       scrollbar-width:none;
     }
-    .toolbar::-webkit-scrollbar{display:none;}
-    .toolbar > *{flex:none;}
-    .spacer{display:none;} /* nothing to push into once the row scrolls instead of wraps */
+    .toolbar-row::-webkit-scrollbar{display:none;}
+    .toolbar-row > *{flex:none;}
+    .spacer{display:none;} /* nothing to push into once each row scrolls instead of wraps */
 
     /* Bump touch targets toward the ~40-44px phones need -- 32px icon
        buttons are fine with a mouse cursor but tight for a fingertip. */
@@ -431,6 +466,16 @@
 
 <div class="app" id="app">
   <div class="toolbar" id="toolbar">
+    <!-- Two named halves so the phone layout (see the max-width:640px rule
+         below) can turn each into its own full-width, independently
+         side-scrolling row -- "editing tools" on top, "file/plan actions"
+         below, instead of one very long single scrolling row or the old
+         auto-wrap that squashed everything trying to fit as many rows as
+         it took. display:contents on .toolbar-row at every OTHER width
+         makes these wrapper divs invisible to layout, so nothing changes
+         at tablet/desktop sizes -- children lay out exactly as if they
+         were still direct children of .toolbar. -->
+    <div class="toolbar-row" id="toolbarRow1">
     <div class="brand">UTZLINE Site Measure<small>plan markup</small></div>
     <div class="sep"></div>
 
@@ -476,8 +521,13 @@
       <button class="ibtn" id="layersBtn" title="Show all objects on this plan" aria-label="Toggle layers list">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M10 3l7 4-7 4-7-4z"/><path d="M3 11l7 4 7-4"/></svg>
       </button>
+      <button class="ibtn" id="showHintBtn" title="Show the quick-help tip again (drag/pan/zoom controls)" aria-label="Show quick help tip">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.2"/><path d="M7.8 7.6a2.2 2.2 0 1 1 3.1 2c-.7.5-1.1.9-1.1 1.9"/><circle cx="10" cy="14" r="0.15" fill="currentColor"/></svg>
+      </button>
     </div>
+    </div><!-- /toolbarRow1 -->
 
+    <div class="toolbar-row" id="toolbarRow2">
     <div class="spacer"></div>
 
     <div class="tgroup autobk-group" id="autoBackupGroup">
@@ -528,6 +578,7 @@
     <button class="ibtn" id="exitAppBtn" title="Exit app" aria-label="Exit app" style="display:none;">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2H4.8a1 1 0 0 0-1 1v11.6a1 1 0 0 0 1 1H8"/><path d="M7.8 10h8.4M12.8 6.2l3.8 3.8-3.8 3.8"/></svg>
     </button>
+    </div><!-- /toolbarRow2 -->
     <input type="file" id="fileInput" accept="image/*,application/pdf" style="display:none">
     <input type="file" id="insertImageInput" accept="image/*,application/pdf" style="display:none">
     <input type="file" id="openProjectInput" accept=".json,application/json" style="display:none">
@@ -543,7 +594,10 @@
       </g>
     </svg>
 
-    <div class="empty-hint" id="emptyHint">Drag to draw (hold Shift to keep it horizontal/vertical) &middot; scroll, two fingers, or hold Space and drag to pan &middot; pinch or Ctrl/Cmd+scroll to zoom &middot; double-click text to edit &middot; <b>sample plan loaded — Open replaces it</b></div>
+    <div class="empty-hint" id="emptyHint">
+      <span id="emptyHintText">Drag to draw (hold Shift to keep it horizontal/vertical) &middot; scroll, two fingers, or hold Space and drag to pan &middot; pinch or Ctrl/Cmd+scroll to zoom &middot; double-click text to edit &middot; <b>sample plan loaded — Open replaces it</b></span>
+      <button type="button" class="empty-hint-close" id="emptyHintClose" aria-label="Dismiss tip" title="Dismiss (or swipe this away)">&times;</button>
+    </div>
 
     <div class="panel" id="panel" style="display:none;"></div>
 
@@ -797,6 +851,46 @@
   var stage = document.getElementById("stage");
   var panel = document.getElementById("panel");
   var emptyHint = document.getElementById("emptyHint");
+  // The quick-help tip used to only ever disappear once you drew your first
+  // object (or switched tools) -- on a freshly opened/loaded plan with
+  // nothing drawn yet, it just sat there over the middle of the photo with
+  // no way to close it early. hintDismissed lets it be closed on demand
+  // (tap the × or swipe it away) without waiting for that; hintForceShow
+  // lets the toolbar's "?" button bring it back on demand too, even once
+  // there are already objects on the plan (a reasonable time to want a
+  // reminder of the pan/zoom controls again).
+  var hintDismissed = false;
+  var hintForceShow = false;
+  function dismissHint(){
+    hintDismissed = true; hintForceShow = false;
+    renderAll();
+  }
+  (function setupHintDismiss(){
+    var closeBtn = document.getElementById("emptyHintClose");
+    closeBtn.addEventListener("click", dismissHint);
+    // Swipe-to-dismiss: a small deliberate drag in any direction closes it,
+    // same gesture as swiping away a notification. A plain tap (near-zero
+    // movement) is left alone -- it isn't a swipe, and the × button already
+    // covers "just close it" for anyone tapping instead.
+    var startX = 0, startY = 0, tracking = false;
+    var SWIPE_THRESHOLD = 24;
+    emptyHint.addEventListener("touchstart", function(e){
+      if (!e.touches || !e.touches.length) return;
+      tracking = true; startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+    }, { passive: true });
+    emptyHint.addEventListener("touchend", function(e){
+      if (!tracking) return;
+      tracking = false;
+      var t = (e.changedTouches && e.changedTouches[0]);
+      if (!t) return;
+      var dx = t.clientX - startX, dy = t.clientY - startY;
+      if (Math.hypot(dx, dy) >= SWIPE_THRESHOLD) dismissHint();
+    }, { passive: true });
+  })();
+  document.getElementById("showHintBtn").addEventListener("click", function(){
+    hintDismissed = false; hintForceShow = true;
+    renderAll();
+  });
   var zoomLabel = document.getElementById("zoomLabel");
   var dimLabel = document.getElementById("dimLabel");
   var toast = document.getElementById("toast");
@@ -1629,7 +1723,8 @@
     renderLayersList();
     updateStatus();
     updateLockAllButton();
-    emptyHint.style.display = state.objects.length === 0 && state.tool === "select" ? "flex" : "none";
+    var showHint = state.tool === "select" && !hintDismissed && (state.objects.length === 0 || hintForceShow);
+    emptyHint.style.display = showHint ? "flex" : "none";
   }
   // Lives INSIDE the world group, so it automatically pans/zooms with
   // everything else without needing to be rebuilt on every view change --
@@ -2370,6 +2465,11 @@
     // the one tool that stays "drawing" across a pointerup, so a plain
     // tool switch wouldn't otherwise clear it.
     if (state.drawing && state.tool !== tool){ state.drawing = null; dragMode = null; clearPreview(); }
+    // A manually-reopened hint (see showHintBtn) is only meant to persist
+    // until the next tool switch away from Select -- otherwise picking a
+    // drawing tool and coming back to Select later would make it pop back
+    // up unexpectedly, long after the person asked to see it again.
+    if (tool !== "select") hintForceShow = false;
     state.tool = tool;
     document.querySelectorAll("#toolButtons .ibtn").forEach(function(b){ b.classList.toggle("active", b.dataset.tool === tool); });
     if (tool !== "select") state.selectedId = null;

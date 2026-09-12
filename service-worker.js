@@ -105,7 +105,19 @@
 // because anything was actually working. Added the missing viewport tag;
 // this didn't show up in the claude.ai Artifact preview because that
 // platform inserts its own viewport tag automatically.)
-var CACHE_NAME = "redline-cache-v16";
+// (v17: the quick-help tip that sits over the canvas ("Drag to draw...")
+// used to only disappear once you drew your first object or switched
+// tools -- on a freshly opened/loaded plan with nothing drawn yet, it just
+// sat there over the middle of the photo with no way to close it early.
+// It can now be dismissed early with a swipe or its new × button, and a
+// new "?" button next to the layers icon brings it back on demand anytime,
+// even once there's already work on the plan.)
+// (v18: the phone toolbar was one long row you had to keep swiping sideways
+// across to reach everything. Split it into its two natural halves --
+// editing tools on top, file/plan actions below -- each its own full-size,
+// independently side-scrolling row, so there's a lot less swiping to reach
+// any one button. Tablet/desktop layout is untouched by this.)
+var CACHE_NAME = "redline-cache-v18";
 
 var PRECACHE_URLS = [
   "./",
