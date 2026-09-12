@@ -188,6 +188,12 @@
   .autobk-lock svg{width:14px; height:14px;}
   .autobk-lock:hover{background:var(--surface-2);}
   .autobk-lock.active{color:var(--accent);}
+  .autobk-lock.needs-attn{color:var(--accent); position:relative;}
+  .autobk-lock.needs-attn::after{
+    content:""; position:absolute; top:2px; right:2px;
+    width:6px; height:6px; border-radius:50%; background:var(--accent);
+    box-shadow:0 0 0 1.5px var(--surface-1);
+  }
 
   /* ---------- canvas ---------- */
   .stage{
@@ -447,6 +453,9 @@
       <button type="button" class="autobk-lock" id="autoBackupLockBtn" title="Lock these settings so they can't be changed by accident" aria-label="Lock auto-backup settings" aria-pressed="false">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="10" height="7" rx="1.3"/><path id="autoBackupLockShackle" d="M7 9V6.5a3 3 0 0 1 6 0"/></svg>
       </button>
+      <button type="button" class="autobk-lock" id="autoBackupFolderBtn" title="Choose a folder to save auto-backups to directly — no download prompts (Chrome/Edge desktop only)" aria-label="Choose auto-backup folder" style="display:none;">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 6a1 1 0 0 1 1-1h3.3l1.2 1.4h7a1 1 0 0 1 1 1v7.1a1 1 0 0 1-1 1h-11.5a1 1 0 0 1-1-1z"/></svg>
+      </button>
     </div>
     <button class="tbtn" id="newBtn" title="Start a new file — clears the current plan and its annotations back to a blank canvas, ready for Open/Insert/paste or to draw on directly">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5 2.5h6l3.5 3.5V16a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M11 2.5V6h3.5" stroke-linecap="round"/><path d="M10 9.5v4M8 11.5h4" stroke-linecap="round"/></svg>
@@ -624,18 +633,41 @@
     accept[mimeType] = ext ? [ext] : [];
     return [{ accept: accept }];
   }
+  // Writes a blob to a file handle (from showSaveFilePicker or a directory
+  // handle's getFileHandle) and reads the result back before declaring
+  // success. This matters because createWritable()/write()/close() can, on
+  // some real-world Windows setups (antivirus file-locking, a OneDrive/
+  // cloud-sync client holding the file, etc.), resolve with no error at all
+  // while the file that actually lands on disk is empty or truncated --
+  // confirmed from a user report of exactly this: a project file that
+  // opened fine in the app's own "saved" flow, then showed as a real
+  // 0-byte file in Windows Explorer, and understandably failed to open
+  // ("doesn't look like a project file") on another device. Comparing the
+  // written file's size back against the blob's own size catches that
+  // silently-empty case so the caller can react (fall back to a plain
+  // download) instead of reporting a false "saved".
+  function verifiedHandleWrite(handle, blob){
+    return handle.createWritable().then(function(w){
+      return w.write(blob).then(function(){ return w.close(); });
+    }).then(function(){
+      return handle.getFile();
+    }).then(function(f){
+      if (!f || f.size !== blob.size) return Promise.reject({ code: "empty_write" });
+      return { status: "saved" };
+    });
+  }
   function saveBlobSmart(blob, filename){
     if (downloadsApi) return downloadsApi.save({ filename: filename, data: blob });
     if (typeof window.showSaveFilePicker === "function"){
       return window.showSaveFilePicker({ suggestedName: filename, types: saveFilePickerTypes(blob.type, filename) })
-        .then(function(handle){ return handle.createWritable(); })
-        .then(function(w){ return w.write(blob).then(function(){ return w.close(); }); })
-        .then(function(){ return { status: "saved" }; })
+        .then(function(handle){ return verifiedHandleWrite(handle, blob); })
         .catch(function(err){
           if (err && err.name === "AbortError") return Promise.reject({ code: "declined" });
           // Picker exists but refused for some other reason (a permissions
-          // policy in this context, an OS-level dialog failure, etc.) --
-          // still get the file out rather than leaving nothing at all.
+          // policy in this context, an OS-level dialog failure, a write
+          // that silently produced an empty file -- see verifiedHandleWrite
+          // above -- etc.) -- still get the file out via a plain download
+          // rather than leaving nothing (or a corrupt file) at all.
           return new Promise(function(resolve, reject){
             try{ browserDownloadBlob(blob, filename); resolve({ status: "saved" }); }
             catch(e){ reject(e); }
@@ -669,9 +701,16 @@
   function writeToSaveTarget(target, blob, filename){
     if (target.kind === "declined") return Promise.reject({ code: "declined" });
     if (target.kind === "handle"){
-      return target.handle.createWritable().then(function(w){
-        return w.write(blob).then(function(){ return w.close(); });
-      }).then(function(){ return { status: "saved" }; });
+      return verifiedHandleWrite(target.handle, blob).catch(function(err){
+        if (err && err.code === "declined") return Promise.reject(err);
+        // Same empty/corrupt-write safety net as saveBlobSmart's picker
+        // branch -- fall back to a plain download rather than reporting a
+        // false "saved" over a file that didn't actually land right.
+        return new Promise(function(resolve, reject){
+          try{ browserDownloadBlob(blob, filename); resolve({ status: "saved" }); }
+          catch(e){ reject(e); }
+        });
+      });
     }
     return saveBlobSmart(blob, filename);
   }
@@ -821,23 +860,29 @@
   // ---- periodic local backup ----
   // Separate from the IndexedDB autosave above (which only restores your
   // in-progress edits if you reopen this same tab/browser): this actually
-  // offers a real PNG for download every few minutes, so you have a file
-  // on disk even if the browser profile itself is lost. Only fires when
-  // something changed since the last backup (or the last manual Save), so
-  // it won't prompt while you're just looking at a plan.
+  // saves a real PNG file every few minutes, so you have a file on disk
+  // even if the browser profile itself is lost. Only fires when something
+  // changed since the last backup (or the last manual Save), so it won't
+  // do anything while you're just looking at a plan.
   //
-  // IMPORTANT, and worth being upfront about: this can NOT run silently in
-  // the background to a chosen folder (Roaming or otherwise). Every single
-  // save — this automatic one included — goes through the platform's own
-  // downloads capability, which always shows its own confirmation (name +
-  // size) before anything reaches disk; there's no API this page can call
-  // to skip that or to target a specific folder itself. The only way to
-  // make repeated saves land somewhere specific with no extra file-picker
-  // on top of that confirmation is to set your BROWSER's default download
-  // folder once (e.g. Chrome: chrome://settings/downloads, with "Ask
-  // where to save" off) to wherever you want these — a synced Roaming
-  // folder included — after which every accepted save goes straight
-  // there.
+  // Where that file lands depends on what's available, checked in this
+  // order every time it fires:
+  //  1. The claude.ai "downloads" capability (downloadsApi), when this
+  //     page is running inside the Claude app/chat's own artifact view --
+  //     that capability always shows its own confirmation (name + size)
+  //     before anything reaches disk; there's no way to skip that or to
+  //     target a specific folder from inside that view.
+  //  2. A folder the person has explicitly chosen via the "auto-backup
+  //     folder" button (backupDirHandle, below) -- File System Access API
+  //     (Chrome/Edge desktop only). Once granted, THIS is genuinely
+  //     silent: no picker, no confirmation, every backup just appears in
+  //     that folder. Pick a folder that's itself synced/roaming (a OneDrive
+  //     folder, a mapped network drive, a Windows roaming profile path)
+  //     and backups end up "roaming" too -- the app only needs to know
+  //     which local folder to write into; whatever already syncs that
+  //     folder does the rest.
+  //  3. Otherwise, a plain downloaded file (browserDownloadBlob) -- lands
+  //     wherever the browser's own default download folder is set to.
   var AUTOBACKUP_MIN_INTERVAL_MIN = 5, AUTOBACKUP_MAX_INTERVAL_MIN = 60, AUTOBACKUP_STEP_MIN = 5;
   var autoBackupIntervalMin = 5;
   try{ var storedInt = parseInt(localStorage.getItem("redline_autobackup_interval"), 10); if (storedInt) autoBackupIntervalMin = clamp(storedInt, AUTOBACKUP_MIN_INTERVAL_MIN, AUTOBACKUP_MAX_INTERVAL_MIN); }catch(e){}
@@ -851,6 +896,15 @@
   // be touched.
   var autoBackupLocked = false;
   try{ autoBackupLocked = localStorage.getItem("redline_autobackup_locked") === "1"; }catch(e){}
+  // ---- optional direct-to-folder backup target (File System Access API) ----
+  // Chrome/Edge desktop only (Firefox, Safari, and mobile browsers have no
+  // showDirectoryPicker at all) -- feature-detected once here so the UI can
+  // just hide the button everywhere else rather than offering something
+  // that would immediately fail.
+  var backupDirSupported = typeof window.showDirectoryPicker === "function";
+  var backupDirHandle = null;
+  var backupDirPermissionOK = false;
+  var backupDirName = "";
   function autoBackupFilename(){
     var d = new Date();
     var pad = function(n){ return String(n).padStart(2, "0"); };
@@ -858,16 +912,46 @@
     var timePart = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
     return (state.fileBase || "plan") + "_FLATTENED autobackup " + datePart + " " + timePart + ".png";
   }
+  // Writes straight into the chosen directory handle -- no picker, no
+  // confirmation dialog, just a file appearing there. A previously-granted
+  // permission can lapse (browser restart, OS-level revocation, the folder
+  // itself being moved/deleted) with no warning ahead of time, so every
+  // write is guarded: a permission-shaped failure rejects with a specific
+  // code the caller can react to (flip the UI to "needs reconnecting")
+  // rather than being treated the same as a normal I/O error.
+  function writeBlobToBackupDir(blob, filename){
+    // verifiedHandleWrite (defined earlier, alongside the Save PDF/Save
+    // project save-picker paths) reads the write back and rejects with
+    // { code: "empty_write" } if it landed as an empty/truncated file --
+    // the same silent-failure mode those paths guard against.
+    return backupDirHandle.getFileHandle(filename, { create: true }).then(function(fh){
+      return verifiedHandleWrite(fh, blob);
+    }).catch(function(err){
+      if (err && (err.name === "NotAllowedError" || err.name === "SecurityError")){
+        return Promise.reject({ code: "permission_lost" });
+      }
+      return Promise.reject(err);
+    });
+  }
   function maybeAutoBackup(){
-    if (!autoBackupOn || !backupDirty || !state.imageW || !downloadsApi) return;
+    var canDownloadsApi = !!downloadsApi;
+    var canFolder = backupDirSupported && backupDirHandle && backupDirPermissionOK;
+    if (!autoBackupOn || !backupDirty || !state.imageW || !(canDownloadsApi || canFolder)) return;
     if (Date.now() - lastBackupAt < autoBackupIntervalMin * 60 * 1000) return;
     backupDirty = false;
     lastBackupAt = Date.now();
     renderExportBlob().then(function(blob){
-      return downloadsApi.save({ filename: autoBackupFilename(), data: blob });
+      if (canDownloadsApi) return downloadsApi.save({ filename: autoBackupFilename(), data: blob });
+      return writeBlobToBackupDir(blob, autoBackupFilename());
     }).then(function(res){
       if (res && res.status === "saved") showToast("Backed up.");
-    }).catch(function(){ backupDirty = true; }); // retry on the next tick
+    }).catch(function(err){
+      backupDirty = true; // retry on the next tick
+      if (err && err.code === "permission_lost"){
+        backupDirPermissionOK = false;
+        refreshBackupDirUI();
+      }
+    });
   }
   setInterval(maybeAutoBackup, 30 * 1000);
   var autosaveTimer = null;
@@ -2906,6 +2990,70 @@
     refreshAutoBackupUI();
     showToast(autoBackupLocked ? "Auto-backup settings locked." : "Auto-backup settings unlocked.");
   });
+  // ---- auto-backup folder button ----
+  // Only shown at all when the File System Access directory picker exists
+  // (Chrome/Edge desktop) -- everywhere else auto-backup just keeps using
+  // downloadsApi or a plain download, exactly as before this feature existed.
+  var autoBackupFolderBtn = document.getElementById("autoBackupFolderBtn");
+  function refreshBackupDirUI(){
+    if (!backupDirSupported) return; // stays hidden (display:none from markup)
+    autoBackupFolderBtn.style.display = "";
+    var has = !!backupDirHandle;
+    autoBackupFolderBtn.classList.toggle("active", has && backupDirPermissionOK);
+    autoBackupFolderBtn.classList.toggle("needs-attn", has && !backupDirPermissionOK);
+    if (!has){
+      autoBackupFolderBtn.title = "Choose a folder to save auto-backups to directly — no download prompts (Chrome/Edge desktop only)";
+    } else if (backupDirPermissionOK){
+      autoBackupFolderBtn.title = "Auto-backup saves straight to “" + backupDirName + "” — click to switch to a different folder, right-click to go back to plain downloads";
+    } else {
+      autoBackupFolderBtn.title = "Auto-backup folder needs to be reconnected — click to resume (or choose a different folder)";
+    }
+  }
+  function chooseBackupDir(){
+    window.showDirectoryPicker({ id: "redline-autobackup", mode: "readwrite" }).then(function(handle){
+      backupDirHandle = handle; backupDirPermissionOK = true; backupDirName = handle.name;
+      refreshBackupDirUI();
+      showToast("Auto-backup will save straight to “" + backupDirName + "”.");
+      // Best-effort persistence so the choice survives a reload -- if this
+      // fails (private browsing, storage quota, etc.) the folder still
+      // works for the rest of THIS session, so a persistence failure here
+      // must never look like the whole thing failed (that's why this isn't
+      // chained into the .catch below).
+      idbSet("backupDirHandle", handle).catch(function(){});
+    }).catch(function(err){
+      if (err && err.name === "AbortError") return; // cancelled -- no-op, keep whatever was set before
+      showToast("Couldn't set that folder.");
+    });
+  }
+  autoBackupFolderBtn.addEventListener("click", function(){
+    if (!backupDirSupported) return;
+    if (backupDirHandle && !backupDirPermissionOK){
+      // Folder already chosen but permission lapsed (browser restart, etc.)
+      // -- try to resume the SAME folder first, since that's what most
+      // clicks in this state mean. requestPermission() only works from a
+      // real user gesture like this click, which is exactly why this can't
+      // just be retried silently from the backup timer itself.
+      backupDirHandle.requestPermission({ mode: "readwrite" }).then(function(perm){
+        if (perm === "granted"){
+          backupDirPermissionOK = true;
+          refreshBackupDirUI();
+          showToast("Auto-backup folder reconnected.");
+        } else {
+          chooseBackupDir(); // they'd rather pick a different one
+        }
+      }).catch(function(){ chooseBackupDir(); });
+      return;
+    }
+    chooseBackupDir();
+  });
+  autoBackupFolderBtn.addEventListener("contextmenu", function(e){
+    e.preventDefault();
+    if (!backupDirHandle) return;
+    backupDirHandle = null; backupDirPermissionOK = false; backupDirName = "";
+    refreshBackupDirUI();
+    idbSet("backupDirHandle", null);
+    showToast("Auto-backup folder cleared — backups will download as files instead.");
+  });
   // flattened=true tags the name with "_FLATTENED" -- for the PDF/PNG export
   // paths below, which bake every annotation into a flat, non-editable
   // picture. Now that a project file (Save project) can sit right next to
@@ -3372,6 +3520,21 @@
   function boot(){
     if (window.claude && window.claude.use){
       window.claude.use("downloads").then(function(d){ downloadsApi = d; }).catch(function(){});
+    }
+    refreshBackupDirUI();
+    if (backupDirSupported){
+      idbGet("backupDirHandle").then(function(handle){
+        if (!handle) return;
+        backupDirHandle = handle; backupDirName = handle.name;
+        return handle.queryPermission({ mode: "readwrite" }).then(function(perm){
+          backupDirPermissionOK = perm === "granted";
+        });
+      }).catch(function(){
+        // Handle is unusable (folder moved/deleted, revoked, or just not the
+        // shape we expect) -- fall back to "no folder chosen" rather than
+        // getting stuck in a broken state.
+        backupDirHandle = null; backupDirPermissionOK = false; backupDirName = "";
+      }).then(refreshBackupDirUI);
     }
     idbGet("current").then(function(saved){
       if (saved && saved.imageDataURL){

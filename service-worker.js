@@ -10,7 +10,13 @@
 // (v3: fixed a regression from the v2 DPI fix -- reopening one of this
 // app's own exported PDFs came back blurry because the PDF-import render
 // scale hadn't been recalibrated to match the new export DPI.)
-var CACHE_NAME = "redline-cache-v3";
+// (v4: Save PDF/Save project now verify a picker-based write actually
+// landed on disk before reporting success, falling back to a plain
+// download if it silently came back empty -- a real Windows setup was
+// seen producing a 0-byte project file with no error. Also added: an
+// optional folder for auto-backup to save straight into, no download
+// prompts, via the File System Access API on Chrome/Edge desktop.)
+var CACHE_NAME = "redline-cache-v4";
 
 var PRECACHE_URLS = [
   "./",
