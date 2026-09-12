@@ -60,7 +60,21 @@
 // but the panel had no gate keeping that picker from showing up for images
 // anyway. It's now hidden for images specifically; every other object type
 // is unaffected.)
-var CACHE_NAME = "redline-cache-v11";
+// (v12: two changes -- (1) added an Exit button, shown only when running
+// as an installed app on a phone/tablet, since Android gives installed
+// apps no built-in way to fully close themselves; (2) the v10 fix for the
+// auto-backup folder button showing up on Android wasn't reliable -- it
+// trusted navigator.userAgentData.mobile as the deciding vote, but that
+// flag reflects Chrome's phone-vs-tablet form-factor guess and can come
+// back false on an Android device that isn't a phone, letting the button
+// reappear. The user-agent string itself is now checked first: any
+// Android/iOS user agent is treated as mobile outright, regardless of
+// what the form-factor flag says.)
+// (v13: saved project files now use the .utzline.json extension (was
+// .redline.json), matching the app's current name -- Open project still
+// accepts old .redline.json files saved before the rename, so nobody's
+// existing saves are stranded by this.)
+var CACHE_NAME = "redline-cache-v13";
 
 var PRECACHE_URLS = [
   "./",

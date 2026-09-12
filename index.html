@@ -496,7 +496,7 @@
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h3l1.5 2h6.5A1.5 1.5 0 0 1 17 8.5v6A1.5 1.5 0 0 1 15.5 16h-11A1.5 1.5 0 0 1 3 14.5z"/></svg>
       Open
     </button>
-    <button class="tbtn" id="openProjectBtn" title="Open a UTZLINE Site Measure project file (.redline.json) you saved earlier — everything stays fully editable: every object, its color, locks, hidden items, all of it">
+    <button class="tbtn" id="openProjectBtn" title="Open a UTZLINE Site Measure project file (.utzline.json — older .redline.json files from before the rename still open too) you saved earlier — everything stays fully editable: every object, its color, locks, hidden items, all of it">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 6a1 1 0 0 1 1-1h3.3l1.2 1.4h7a1 1 0 0 1 1 1v7.1a1 1 0 0 1-1 1h-11.5a1 1 0 0 1-1-1z"/><path d="M10 8.6v4M8 10.6l2 2 2-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Open project
     </button>
@@ -504,9 +504,12 @@
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="1.3"/><circle cx="7" cy="8" r="1.4"/><path d="M3 14.5l4-4 3 3 3.5-3.5L17.5 14" stroke-linecap="round"/></svg>
       Insert image
     </button>
-    <button class="tbtn primary" id="saveBtn" title="Save everything in one go: a project file (.redline.json — reopen it later with Open project to keep adjusting) AND a flattened PDF (labels and lines stay true vector, so they're never blurry no matter how far you zoom in, but it can't be reopened here for further editing)">
+    <button class="tbtn primary" id="saveBtn" title="Save everything in one go: a project file (.utzline.json — reopen it later with Open project to keep adjusting) AND a flattened PDF (labels and lines stay true vector, so they're never blurry no matter how far you zoom in, but it can't be reopened here for further editing)">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3.5 3.5h9.6l3.4 3.4v9.1a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1v-11.5a1 1 0 0 1 1-1z"/><path d="M6 3.5v4.2h6v-4.2"/><rect x="6" y="11.3" width="8" height="5.2" rx="0.6"/></svg>
       Save
+    </button>
+    <button class="ibtn" id="exitAppBtn" title="Exit app" aria-label="Exit app" style="display:none;">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2H4.8a1 1 0 0 0-1 1v11.6a1 1 0 0 0 1 1H8"/><path d="M7.8 10h8.4M12.8 6.2l3.8 3.8-3.8 3.8"/></svg>
     </button>
     <input type="file" id="fileInput" accept="image/*,application/pdf" style="display:none">
     <input type="file" id="insertImageInput" accept="image/*,application/pdf" style="display:none">
@@ -936,13 +939,51 @@
   // now ALSO excludes anything that looks like a mobile device, regardless
   // of what the API itself claims to support, matching what this feature's
   // own tooltip has always promised ("Chrome/Edge desktop only").
+  // Checks the plain user-agent string FIRST and treats any hit as mobile,
+  // rather than trusting navigator.userAgentData.mobile as the deciding
+  // vote -- that flag reflects Chrome's phone-vs-tablet FORM FACTOR guess,
+  // and reportedly comes back false for at least some Android tablets/
+  // devices, which would have let this exact folder button slip back
+  // through on Android despite the check existing at all. An Android (or
+  // iOS) user agent is reason enough on its own; userAgentData is only
+  // consulted as a fallback signal when the user agent string itself is
+  // inconclusive.
   function isLikelyMobileDevice(){
+    if (/Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent || "")) return true;
     try{
       if (navigator.userAgentData && typeof navigator.userAgentData.mobile === "boolean") return navigator.userAgentData.mobile;
     }catch(e){}
-    return /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent || "");
+    return false;
   }
   var backupDirSupported = typeof window.showDirectoryPicker === "function" && !isLikelyMobileDevice();
+
+  // Exit button: only makes sense once this is running as an installed app
+  // on a phone/tablet -- installed Windows/Mac copies already get a native
+  // window close (X) from the OS, and a plain mobile browser tab already
+  // has its own close control too, so the button stays hidden there.
+  function isStandaloneDisplay(){
+    try{
+      return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    }catch(e){ return false; }
+  }
+  var exitAppBtn = document.getElementById("exitAppBtn");
+  if (isLikelyMobileDevice() && isStandaloneDisplay()){
+    exitAppBtn.style.display = "";
+  }
+  exitAppBtn.addEventListener("click", function(){
+    // There's no API for a web page to force-quit the app hosting it --
+    // window.close() only actually works when this page is the sole entry
+    // in its own history (true for an app opened fresh from its icon), so
+    // try that first...
+    try{ window.close(); }catch(e){}
+    // ...and if we're still here a moment later, it didn't take (some
+    // Android builds block it even then), so fall back to telling the
+    // person how to close it themselves instead of doing nothing silently.
+    setTimeout(function(){
+      showToast("Couldn't close automatically — swipe this app away from your Recent Apps list, or use your device's Back button.");
+    }, 350);
+  });
+
   var backupDirHandle = null;
   var backupDirPermissionOK = false;
   var backupDirName = "";
@@ -965,7 +1006,7 @@
     var pad = function(n){ return String(n).padStart(2, "0"); };
     var datePart = d.getFullYear() + "_" + pad(d.getMonth() + 1) + "_" + pad(d.getDate());
     var timePart = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
-    return (state.fileBase || "plan") + " autobackup " + datePart + " " + timePart + ".redline.json";
+    return (state.fileBase || "plan") + " autobackup " + datePart + " " + timePart + ".utzline.json";
   }
   // Writes straight into the chosen directory handle -- no picker, no
   // confirmation dialog, just a file appearing there. A previously-granted
@@ -3627,7 +3668,7 @@
 
   /* ============================== boot ============================== */
   // Shared by the IndexedDB autosave restore (boot, below) AND by opening a
-  // saved .redline.json project file explicitly (see "Save/Open project"
+  // saved .utzline.json project file explicitly (see "Save/Open project"
   // further down) -- both hand this the exact same shape:
   // {imageDataURL, imageW, imageH, fileBase, objects, style}. Keeping the
   // migration logic in one place means a project file saved years from now
@@ -3662,14 +3703,18 @@
   /* ============================== save / open project ==============================
      Distinct from Save PDF (a flattened, non-editable picture): a project
      file is the same shape the IndexedDB autosave already uses, just written
-     out as a plain .redline.json file instead of tucked away in this
+     out as a plain .utzline.json file instead of tucked away in this
      browser's storage -- so it survives a cleared browser, moves between
      machines, and (since it's an ordinary named file) supports working on
      several separate plans side by side, each with its own save. Reopening
      one keeps every object fully editable -- nothing is flattened. */
   function projectPayload(){
     return {
-      redlineProject: 1,
+      // Renamed from the app's old name (was "Redline") -- only the NEW
+      // marker is ever written now, but openProjectFile() below still
+      // accepts the old one too, so nobody's already-saved project files
+      // become unopenable just because the app was renamed.
+      utzlineProject: 1,
       imageDataURL: state.imageDataURL, imageW: state.imageW, imageH: state.imageH,
       fileBase: state.fileBase, objects: state.objects, style: defaultStyle()
     };
@@ -3684,7 +3729,7 @@
     // file to actually finish before starting the PDF -- so the two don't
     // race over the same toast, and each result is visible in turn rather
     // than whichever happens to resolve last silently winning.
-    return saveBlobSmart(blob, suggestFilename("redline.json")).then(function(res){
+    return saveBlobSmart(blob, suggestFilename("utzline.json")).then(function(res){
       showToast(res.status === "saved" ? "Project saved — Open project to keep working on it later." : "Sent.");
     }).catch(function(err){
       if (!err || err.code === "declined") return;
@@ -3697,7 +3742,10 @@
     reader.onload = function(){
       var saved;
       try{ saved = JSON.parse(String(reader.result)); }catch(e){ saved = null; }
-      if (!saved || !saved.redlineProject || !saved.imageDataURL){
+      // Accept files saved under either marker: the current one, and the
+      // old one from before the app was renamed (was "Redline") -- so a
+      // project someone saved months ago still opens today.
+      if (!saved || !(saved.utzlineProject || saved.redlineProject) || !saved.imageDataURL){
         showToast("That doesn't look like a UTZLINE Site Measure project file.");
         return;
       }
