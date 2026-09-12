@@ -912,6 +912,20 @@
     var timePart = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
     return (state.fileBase || "plan") + "_FLATTENED autobackup " + datePart + " " + timePart + ".png";
   }
+  // Same timestamp pattern as autoBackupFilename, but for the fully editable
+  // project file (see projectPayload() further down) rather than a
+  // flattened picture. Only used on the direct-to-folder backup path (see
+  // maybeAutoBackup below) -- a flattened PNG shows what a plan looked like
+  // at that moment, but it can't be reopened and kept working on; for a
+  // business relying on this as a real safety net, the thing worth
+  // protecting is the actual editable state, not just a picture of it.
+  function autoBackupProjectFilename(){
+    var d = new Date();
+    var pad = function(n){ return String(n).padStart(2, "0"); };
+    var datePart = d.getFullYear() + "_" + pad(d.getMonth() + 1) + "_" + pad(d.getDate());
+    var timePart = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    return (state.fileBase || "plan") + " autobackup " + datePart + " " + timePart + ".redline.json";
+  }
   // Writes straight into the chosen directory handle -- no picker, no
   // confirmation dialog, just a file appearing there. A previously-granted
   // permission can lapse (browser restart, OS-level revocation, the folder
@@ -940,11 +954,37 @@
     if (Date.now() - lastBackupAt < autoBackupIntervalMin * 60 * 1000) return;
     backupDirty = false;
     lastBackupAt = Date.now();
-    renderExportBlob().then(function(blob){
-      if (canDownloadsApi) return downloadsApi.save({ filename: autoBackupFilename(), data: blob });
-      return writeBlobToBackupDir(blob, autoBackupFilename());
-    }).then(function(res){
-      if (res && res.status === "saved") showToast("Backed up.");
+    if (canDownloadsApi){
+      renderExportBlob().then(function(blob){
+        return downloadsApi.save({ filename: autoBackupFilename(), data: blob });
+      }).then(function(res){
+        if (res && res.status === "saved") showToast("Backed up.");
+      }).catch(function(){
+        backupDirty = true; // retry on the next tick
+      });
+      return;
+    }
+    // Folder path: write BOTH a flattened PNG (a quick visual reference)
+    // AND the actual editable project file -- the real safety net here,
+    // since reopening it with Open project means picking up exactly where
+    // you left off, not re-tracing every annotation from a picture. Both
+    // writes are independently verified (see writeBlobToBackupDir /
+    // verifiedHandleWrite); if either one fails, the whole backup counts
+    // as not done and retries next tick -- a PNG with no matching
+    // reopenable project (or vice versa) isn't a real backup.
+    var jsonBlob;
+    try{
+      jsonBlob = new Blob([JSON.stringify(projectPayload())], { type: "application/json" });
+    }catch(e){
+      backupDirty = true;
+      return;
+    }
+    renderExportBlob().then(function(pngBlob){
+      return writeBlobToBackupDir(pngBlob, autoBackupFilename());
+    }).then(function(){
+      return writeBlobToBackupDir(jsonBlob, autoBackupProjectFilename());
+    }).then(function(){
+      showToast("Backed up.");
     }).catch(function(err){
       backupDirty = true; // retry on the next tick
       if (err && err.code === "permission_lost"){
@@ -955,6 +995,19 @@
   }
   setInterval(maybeAutoBackup, 30 * 1000);
   var autosaveTimer = null;
+  // This is the safety net that lets a reload/crash/accidental tab-close
+  // pick right back up (see boot(), which restores from idbGet("current")
+  // when there's no explicit project file to open) -- it's separate from,
+  // and much more fine-grained than, the periodic auto-backup above (this
+  // fires ~700ms after every single edit). It used to fail completely
+  // silently (a bare .catch(function(){})): private browsing, a full
+  // storage quota, or the profile's IndexedDB being unavailable for any
+  // reason would leave someone editing for hours with zero durable safety
+  // net and no indication anything was wrong. It's warned about once per
+  // occurrence now (not spammed on every keystroke) so a real problem
+  // surfaces instead of staying invisible until a lost tab makes it obvious
+  // the hard way.
+  var autosaveWarned = false;
   function scheduleAutosave(){
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(function(){
@@ -962,8 +1015,20 @@
         idbSet("current", {
           imageDataURL: state.imageDataURL, imageW: state.imageW, imageH: state.imageH,
           fileBase: state.fileBase, objects: state.objects, style: defaultStyle()
-        }).catch(function(){});
-      }catch(e){}
+        }).then(function(){
+          autosaveWarned = false;
+        }).catch(function(){
+          if (!autosaveWarned){
+            autosaveWarned = true;
+            showToast("Local autosave isn't working right now — use Save project to keep a copy of your work.");
+          }
+        });
+      }catch(e){
+        if (!autosaveWarned){
+          autosaveWarned = true;
+          showToast("Local autosave isn't working right now — use Save project to keep a copy of your work.");
+        }
+      }
     }, 700);
   }
 
@@ -2732,7 +2797,7 @@
   }
   function ensurePdfWorker(){
     if (!ensurePdfWorker._set){
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.min.js";
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
       ensurePdfWorker._set = true;
     }
   }
@@ -3560,6 +3625,7 @@
   boot();
 })();
 </script>
+
 
 
 <script>

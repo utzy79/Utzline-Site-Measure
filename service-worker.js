@@ -16,7 +16,14 @@
 // seen producing a 0-byte project file with no error. Also added: an
 // optional folder for auto-backup to save straight into, no download
 // prompts, via the File System Access API on Chrome/Edge desktop.)
-var CACHE_NAME = "redline-cache-v4";
+// (v5: the folder-based auto-backup now saves BOTH a flattened PNG and
+// the actual reopenable project file (.redline.json), not just a
+// picture -- a "successful" backup couldn't previously be recovered
+// into an editable plan. Also: the fine-grained IndexedDB autosave that
+// runs after every edit used to fail completely silently; it now shows
+// a one-time warning toast if it can't save, so a broken/unavailable
+// IndexedDB is never an invisible loss of the local safety net.)
+var CACHE_NAME = "redline-cache-v5";
 
 var PRECACHE_URLS = [
   "./",
