@@ -7,7 +7,10 @@
 // installed copies pick up the update instead of serving stale files forever.
 // (v2: rebuilt after the rename to UTZLINE Site Measure, the PDF export
 // DPI fix, and the save-location picker.)
-var CACHE_NAME = "redline-cache-v2";
+// (v3: fixed a regression from the v2 DPI fix -- reopening one of this
+// app's own exported PDFs came back blurry because the PDF-import render
+// scale hadn't been recalibrated to match the new export DPI.)
+var CACHE_NAME = "redline-cache-v3";
 
 var PRECACHE_URLS = [
   "./",

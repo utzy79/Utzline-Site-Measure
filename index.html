@@ -2652,44 +2652,52 @@
       ensurePdfWorker._set = true;
     }
   }
-  // A naive fixed "3x the PDF's 72dpi base" render is right for a PDF that
-  // was itself built at a plain 72dpi scale (a typical plotted/scanned
-  // drawing sheet) -- but Save PDF here embeds the base photo at its FULL
-  // native resolution, so reopening one of this app's own exports at a flat
-  // 3x could blow a photo up to 2x+ its original pixel size for no benefit
-  // (it's still the same raster underneath, just needlessly upscaled) and
-  // land on a canvas large enough to silently fail in a lot of real
-  // browsers -- iPad Safari's canvas limit in particular is well under what
-  // a big construction photo needs. Capping the longest side keeps every
-  // import safely inside that ceiling while still comfortably exceeding
-  // print quality for a normal drawing sheet.
+  // The render scale here must match Save PDF's own page-size math (see
+  // PX_TO_PT below) or reopening this app's own exports comes back softer
+  // (or needlessly larger) than the original photo. Save PDF shrinks a
+  // photo's pixel width by PX_TO_PT to get the page's width in points,
+  // scaling every page uniformly to a 300dpi-equivalent size; rendering an
+  // import at 1/PX_TO_PT undoes exactly that, so a PDF this app exported
+  // comes back at its original pixel resolution -- not blown up, not
+  // softened. For a PDF from anywhere else (a typical plotted/scanned
+  // drawing sheet, usually built at a plain 72dpi page scale), the same
+  // factor lands on a 300dpi rasterization -- comfortably print-quality.
+  // Very large sheets/photos can still land on a canvas size that silently
+  // fails in a lot of real browsers -- iPad Safari's canvas limit in
+  // particular is well under what a big construction photo needs -- so
+  // PDF_IMPORT_MAX_DIM caps the longest side as a safety net; that cap is
+  // the one case where a reopened export won't come back at full native
+  // resolution, same tradeoff Save PDF itself would eventually hit.
   var PDF_IMPORT_MAX_DIM = 6000;
-  // Loads a PDF and renders ONE page of it, at a resolution generous enough
-  // for later zoom/annotation work (3x the PDF's own 72dpi base is a
-  // print-quality ~216dpi page, capped per PDF_IMPORT_MAX_DIM above). A
-  // single-page PDF just uses page 1; a multi-page one shows a thumbnail
-  // picker first and waits for the person to choose -- real drawing sets are
-  // very often handed over as one PDF with every sheet inside it, so
-  // silently grabbing page 1 every time would quietly drop the rest without
-  // saying so. Backing out of the picker rejects with
-  // "pdf_import_cancelled", which both callers below treat as "do nothing"
-  // rather than an error to show.
+  // Loads a PDF and renders ONE page of it. A single-page PDF just uses
+  // page 1; a multi-page one shows a thumbnail picker first and waits for
+  // the person to choose -- real drawing sets are very often handed over as
+  // one PDF with every sheet inside it, so silently grabbing page 1 every
+  // time would quietly drop the rest without saying so. Backing out of the
+  // picker rejects with "pdf_import_cancelled", which both callers below
+  // treat as "do nothing" rather than an error to show.
   function pdfFileToImage(file){
     if (!pdfImportLibsReady()){
       return Promise.reject({ code: window.__pdfImportLibFailed ? "pdf_import_failed" : "pdf_import_loading" });
     }
     ensurePdfWorker();
+    // Computed per-call (not hoisted to a top-level constant) because
+    // PX_TO_PT is declared further down in this same script -- by the time
+    // a file is actually opened, the whole script has finished running and
+    // PX_TO_PT already has its real value, but evaluating this at parse
+    // time would see it as undefined.
+    var importScale = 1 / PX_TO_PT;
     return file.arrayBuffer().then(function(buf){
       return window.pdfjsLib.getDocument({ data: buf }).promise;
     }).then(function(pdfDoc){
       if (pdfDoc.numPages <= 1){
-        return renderPdfPage(pdfDoc, 1, 3, PDF_IMPORT_MAX_DIM).then(function(res){
+        return renderPdfPage(pdfDoc, 1, importScale, PDF_IMPORT_MAX_DIM).then(function(res){
           res.pageCount = 1; res.pageNum = 1; return res;
         });
       }
       return showPdfPagePicker(pdfDoc).then(function(pageNum){
         if (!pageNum) return Promise.reject({ code: "pdf_import_cancelled" });
-        return renderPdfPage(pdfDoc, pageNum, 3, PDF_IMPORT_MAX_DIM).then(function(res){
+        return renderPdfPage(pdfDoc, pageNum, importScale, PDF_IMPORT_MAX_DIM).then(function(res){
           res.pageCount = pdfDoc.numPages; res.pageNum = pageNum; return res;
         });
       });
