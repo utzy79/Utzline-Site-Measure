@@ -164,8 +164,8 @@
     cursor:pointer; user-select:none; white-space:nowrap;
   }
   .autobk input{cursor:pointer; accent-color:var(--accent); width:14px; height:14px;}
-  .autobk-group.locked .autobk{opacity:0.5;}
-  .autobk-group.locked .autobk, .autobk-group.locked .autobk input{cursor:default;}
+  .autobk-group.locked .autobk, .autobk-group.locked #autoBackupFolderBtn{opacity:0.5;}
+  .autobk-group.locked .autobk, .autobk-group.locked .autobk input, .autobk-group.locked #autoBackupFolderBtn{cursor:default;}
   .autobk-stepper{
     display:flex; align-items:center; gap:3px;
     padding:0 6px; margin-right:2px;
@@ -382,10 +382,41 @@
   @media (prefers-reduced-motion: reduce){ .toast{transition:none;} }
 
   @media (max-width:640px){
-    .brand small{display:none;}
+    .brand{display:none;}
     .panel{width:168px; left:8px; top:8px;}
     .status{font-size:10px;}
     .layers-panel{width:min(240px, calc(100vw - 16px)); right:8px; top:8px; max-height:60vh;}
+
+    /* Phone toolbar: at tablet widths and up, .toolbar's flex-wrap:wrap
+       above lets the row grow to two/three lines with everything at a
+       comfortable size. On a phone-narrow screen there isn't room for that
+       -- wrapping just squashes each row shorter and shorter until buttons
+       overlap/crowd each other, which is the "too small to use" complaint.
+       Instead, keep everything at a full, easy-to-tap size in ONE row and
+       let that row scroll sideways -- swipe to reach whatever's off to the
+       right, rather than everything shrinking to fit. The brand name above
+       is hidden here too since it was just taking up scroll space for no
+       functional purpose on a phone. */
+    .toolbar{
+      flex-wrap:nowrap;
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+      scrollbar-width:none;
+    }
+    .toolbar::-webkit-scrollbar{display:none;}
+    .toolbar > *{flex:none;}
+    .spacer{display:none;} /* nothing to push into once the row scrolls instead of wraps */
+
+    /* Bump touch targets toward the ~40-44px phones need -- 32px icon
+       buttons are fine with a mouse cursor but tight for a fingertip. */
+    .ibtn{width:40px; height:40px;}
+    .ibtn svg{width:20px; height:20px;}
+    .tbtn{height:40px; padding:0 14px; font-size:13px;}
+    .tbtn svg{width:16px; height:16px;}
+    .autobk{height:34px; font-size:12.5px;}
+    .autobk-lock{width:32px; height:32px;}
+    .autobk-lock svg{width:16px; height:16px;}
+    .autobk-stepper button{width:24px; height:24px;}
   }
 </style>
 
@@ -473,13 +504,9 @@
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="1.3"/><circle cx="7" cy="8" r="1.4"/><path d="M3 14.5l4-4 3 3 3.5-3.5L17.5 14" stroke-linecap="round"/></svg>
       Insert image
     </button>
-    <button class="tbtn" id="saveProjectBtn" title="Save a project file (.redline.json) that keeps everything editable — reopen it later with Open project to keep adjusting or adding to it. Handy for working on several plans: give each one its own project file.">
+    <button class="tbtn primary" id="saveBtn" title="Save everything in one go: a project file (.redline.json — reopen it later with Open project to keep adjusting) AND a flattened PDF (labels and lines stay true vector, so they're never blurry no matter how far you zoom in, but it can't be reopened here for further editing)">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3.5 3.5h9.6l3.4 3.4v9.1a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1v-11.5a1 1 0 0 1 1-1z"/><path d="M6 3.5v4.2h6v-4.2"/><rect x="6" y="11.3" width="8" height="5.2" rx="0.6"/></svg>
-      Save project
-    </button>
-    <button class="tbtn primary" id="exportPdfBtn" title="Save a flattened PDF (filename tagged _FLATTENED) — labels and lines stay true vector, so they're never blurry no matter how far you zoom in, but it can't be reopened here for further editing; use Save project for that">
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5 2.5h6l3.5 3.5V16a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M11 2.5V6h3.5" stroke-linecap="round"/></svg>
-      Save PDF
+      Save
     </button>
     <input type="file" id="fileInput" accept="image/*,application/pdf" style="display:none">
     <input type="file" id="insertImageInput" accept="image/*,application/pdf" style="display:none">
@@ -3013,7 +3040,6 @@
   }
 
   /* ============================== export ============================== */
-  document.getElementById("exportPdfBtn").addEventListener("click", exportPDF);
   var autoBackupCheckbox = document.getElementById("autoBackupToggle");
   var autoBackupGroup = document.getElementById("autoBackupGroup");
   var autoBackupMinusBtn = document.getElementById("autoBackupMinus");
@@ -3053,6 +3079,7 @@
     autoBackupLocked = !autoBackupLocked;
     try{ localStorage.setItem("redline_autobackup_locked", autoBackupLocked ? "1" : "0"); }catch(e){}
     refreshAutoBackupUI();
+    refreshBackupDirUI(); // the folder button is locked/unlocked together with everything else here
     showToast(autoBackupLocked ? "Auto-backup settings locked." : "Auto-backup settings unlocked.");
   });
   // ---- auto-backup folder button ----
@@ -3063,6 +3090,13 @@
   function refreshBackupDirUI(){
     if (!backupDirSupported) return; // stays hidden (display:none from markup)
     autoBackupFolderBtn.style.display = "";
+    // The folder choice is itself an auto-backup setting -- someone locking
+    // the interval/on-off toggle to stop accidental changes would rightly
+    // expect this to be covered too, since clicking it can silently switch
+    // (or via right-click, clear) where backups land. Disabling it here is
+    // belt-and-braces alongside the same check inside the click/contextmenu
+    // handlers below.
+    autoBackupFolderBtn.disabled = autoBackupLocked;
     var has = !!backupDirHandle;
     autoBackupFolderBtn.classList.toggle("active", has && backupDirPermissionOK);
     autoBackupFolderBtn.classList.toggle("needs-attn", has && !backupDirPermissionOK);
@@ -3091,6 +3125,7 @@
     });
   }
   autoBackupFolderBtn.addEventListener("click", function(){
+    if (autoBackupLocked) return; // belt-and-braces; the control is disabled too
     if (!backupDirSupported) return;
     if (backupDirHandle && !backupDirPermissionOK){
       // Folder already chosen but permission lapsed (browser restart, etc.)
@@ -3113,6 +3148,7 @@
   });
   autoBackupFolderBtn.addEventListener("contextmenu", function(e){
     e.preventDefault();
+    if (autoBackupLocked) return; // clearing the folder is a change too
     if (!backupDirHandle) return;
     backupDirHandle = null; backupDirPermissionOK = false; backupDirName = "";
     refreshBackupDirUI();
@@ -3543,7 +3579,11 @@
     try{
       blob = new Blob([JSON.stringify(projectPayload())], { type: "application/json" });
     }catch(e){ showToast("Couldn't put together the project file."); return; }
-    saveBlobSmart(blob, suggestFilename("redline.json")).then(function(res){
+    // Returning this chain lets saveAll() (see below) wait for the project
+    // file to actually finish before starting the PDF -- so the two don't
+    // race over the same toast, and each result is visible in turn rather
+    // than whichever happens to resolve last silently winning.
+    return saveBlobSmart(blob, suggestFilename("redline.json")).then(function(res){
       showToast(res.status === "saved" ? "Project saved — Open project to keep working on it later." : "Sent.");
     }).catch(function(err){
       if (!err || err.code === "declined") return;
@@ -3570,7 +3610,25 @@
     reader.onerror = function(){ showToast("Could not read that file."); };
     reader.readAsText(file);
   }
-  document.getElementById("saveProjectBtn").addEventListener("click", saveProject);
+  // Save PDF and Save project used to be two separate buttons/taps. What
+  // people actually want once they're done marking up a plan is both files
+  // -- the flattened PDF to send off, the project file to keep editing --
+  // not a choice between them, so one "Save" button now fires both from a
+  // single tap. Each half keeps its own already-tested behavior completely
+  // unchanged (picker vs. plain-download fallback, the PNG fallback if the
+  // PDF libraries didn't load, the 0-byte-write safety net) -- this just
+  // triggers both instead of requiring two separate clicks to get both
+  // files out of a finished plan.
+  function saveAll(){
+    // Sequenced, not fired in parallel: the project file is tiny and
+    // finishes almost instantly, so letting its own toast land first (then
+    // the PDF's "Building PDF…"/"Saved." messages take over) reads as two
+    // clear steps of one Save action instead of two toasts racing to
+    // overwrite each other. Promise.resolve(...) tolerates saveProject()
+    // returning nothing (its own early-out guards, e.g. no plan loaded).
+    Promise.resolve(saveProject()).then(function(){ exportPDF(); });
+  }
+  document.getElementById("saveBtn").addEventListener("click", saveAll);
   var openProjectInput = document.getElementById("openProjectInput");
   document.getElementById("openProjectBtn").addEventListener("click", function(){
     if (!state.objects.length){ openProjectInput.click(); return; }

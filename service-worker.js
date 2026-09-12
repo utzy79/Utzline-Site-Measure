@@ -23,7 +23,18 @@
 // runs after every edit used to fail completely silently; it now shows
 // a one-time warning toast if it can't save, so a broken/unavailable
 // IndexedDB is never an invisible loss of the local safety net.)
-var CACHE_NAME = "redline-cache-v5";
+// (v6: locking the auto-backup settings now also locks the backup-folder
+// button -- previously it stayed clickable even when locked, so someone
+// could still switch or clear the backup destination by accident.)
+// (v7: the toolbar now reflows for phone-width screens -- instead of
+// wrapping into cramped, hard-to-tap rows it stays one full-size row that
+// scrolls sideways, with bigger touch targets throughout. Tablet layout is
+// unchanged.)
+// (v8: Save project and Save PDF are now one "Save" button that does both
+// in a single tap -- each half keeps its existing verified-write/fallback
+// behavior unchanged, just triggered together instead of two separate
+// taps.)
+var CACHE_NAME = "redline-cache-v8";
 
 var PRECACHE_URLS = [
   "./",
