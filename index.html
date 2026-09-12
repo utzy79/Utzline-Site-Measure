@@ -1,8 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Redline</title>
+<title>UTZLINE Site Measure</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#1b2224">
 <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
@@ -10,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Redline">
+<meta name="apple-mobile-web-app-title" content="UTZLINE Site Measure">
 <style>
 @font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;src:url('./mono.woff2') format('woff2');}
 @font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:500;src:url('./sans.woff2') format('woff2');}
@@ -158,6 +156,7 @@
   .tbtn.primary{background:var(--accent); border-color:var(--accent-ink); color:#fff;}
   .tbtn.primary:hover{background:var(--accent-ink);}
   .tbtn svg{width:15px; height:15px;}
+  #fileNameBtnLabel{max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .autobk-group{ padding-right:2px; }
   .autobk{
     display:flex; align-items:center; gap:6px;
@@ -166,8 +165,8 @@
     cursor:pointer; user-select:none; white-space:nowrap;
   }
   .autobk input{cursor:pointer; accent-color:var(--accent); width:14px; height:14px;}
-  .autobk-group.locked .autobk{opacity:0.5;}
-  .autobk-group.locked .autobk, .autobk-group.locked .autobk input{cursor:default;}
+  .autobk-group.locked .autobk, .autobk-group.locked #autoBackupFolderBtn{opacity:0.5;}
+  .autobk-group.locked .autobk, .autobk-group.locked .autobk input, .autobk-group.locked #autoBackupFolderBtn{cursor:default;}
   .autobk-stepper{
     display:flex; align-items:center; gap:3px;
     padding:0 6px; margin-right:2px;
@@ -190,6 +189,12 @@
   .autobk-lock svg{width:14px; height:14px;}
   .autobk-lock:hover{background:var(--surface-2);}
   .autobk-lock.active{color:var(--accent);}
+  .autobk-lock.needs-attn{color:var(--accent); position:relative;}
+  .autobk-lock.needs-attn::after{
+    content:""; position:absolute; top:2px; right:2px;
+    width:6px; height:6px; border-radius:50%; background:var(--accent);
+    box-shadow:0 0 0 1.5px var(--surface-1);
+  }
 
   /* ---------- canvas ---------- */
   .stage{
@@ -355,6 +360,12 @@
     box-shadow:var(--shadow); padding:18px 20px; max-width:320px; width:calc(100% - 40px);
   }
   .modal-box p{ margin:0 0 16px; font-size:13.5px; line-height:1.45; color:var(--text-primary); }
+  .rename-input{
+    display:block; width:100%; box-sizing:border-box;
+    font:inherit; font-size:13.5px; padding:8px 10px; margin-bottom:16px;
+    border-radius:6px; border:1px solid var(--border-strong);
+    background:var(--surface-0); color:var(--text-primary);
+  }
   .modal-actions{ display:flex; justify-content:flex-end; gap:8px; }
   .mbtn{
     font:inherit; font-size:12.5px; padding:7px 13px; border-radius:6px; cursor:pointer;
@@ -378,16 +389,48 @@
   @media (prefers-reduced-motion: reduce){ .toast{transition:none;} }
 
   @media (max-width:640px){
-    .brand small{display:none;}
+    .brand{display:none;}
     .panel{width:168px; left:8px; top:8px;}
     .status{font-size:10px;}
     .layers-panel{width:min(240px, calc(100vw - 16px)); right:8px; top:8px; max-height:60vh;}
+
+    /* Phone toolbar: at tablet widths and up, .toolbar's flex-wrap:wrap
+       above lets the row grow to two/three lines with everything at a
+       comfortable size. On a phone-narrow screen there isn't room for that
+       -- wrapping just squashes each row shorter and shorter until buttons
+       overlap/crowd each other, which is the "too small to use" complaint.
+       Instead, keep everything at a full, easy-to-tap size in ONE row and
+       let that row scroll sideways -- swipe to reach whatever's off to the
+       right, rather than everything shrinking to fit. The brand name above
+       is hidden here too since it was just taking up scroll space for no
+       functional purpose on a phone. */
+    .toolbar{
+      flex-wrap:nowrap;
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+      scrollbar-width:none;
+    }
+    .toolbar::-webkit-scrollbar{display:none;}
+    .toolbar > *{flex:none;}
+    .spacer{display:none;} /* nothing to push into once the row scrolls instead of wraps */
+
+    /* Bump touch targets toward the ~40-44px phones need -- 32px icon
+       buttons are fine with a mouse cursor but tight for a fingertip. */
+    .ibtn{width:40px; height:40px;}
+    .ibtn svg{width:20px; height:20px;}
+    .tbtn{height:40px; padding:0 14px; font-size:13px;}
+    .tbtn svg{width:16px; height:16px;}
+    .autobk{height:34px; font-size:12.5px;}
+    .autobk-lock{width:32px; height:32px;}
+    .autobk-lock svg{width:16px; height:16px;}
+    .autobk-stepper button{width:24px; height:24px;}
+    #fileNameBtnLabel{max-width:90px;}
   }
 </style>
 
 <div class="app" id="app">
   <div class="toolbar" id="toolbar">
-    <div class="brand">Redline<small>plan markup</small></div>
+    <div class="brand">UTZLINE Site Measure<small>plan markup</small></div>
     <div class="sep"></div>
 
     <div class="tgroup" id="toolButtons">
@@ -449,6 +492,9 @@
       <button type="button" class="autobk-lock" id="autoBackupLockBtn" title="Lock these settings so they can't be changed by accident" aria-label="Lock auto-backup settings" aria-pressed="false">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="10" height="7" rx="1.3"/><path id="autoBackupLockShackle" d="M7 9V6.5a3 3 0 0 1 6 0"/></svg>
       </button>
+      <button type="button" class="autobk-lock" id="autoBackupFolderBtn" title="Choose a folder to save auto-backups to directly — no download prompts (Chrome/Edge desktop only)" aria-label="Choose auto-backup folder" style="display:none;">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 6a1 1 0 0 1 1-1h3.3l1.2 1.4h7a1 1 0 0 1 1 1v7.1a1 1 0 0 1-1 1h-11.5a1 1 0 0 1-1-1z"/></svg>
+      </button>
     </div>
     <button class="tbtn" id="newBtn" title="Start a new file — clears the current plan and its annotations back to a blank canvas, ready for Open/Insert/paste or to draw on directly">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5 2.5h6l3.5 3.5V16a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M11 2.5V6h3.5" stroke-linecap="round"/><path d="M10 9.5v4M8 11.5h4" stroke-linecap="round"/></svg>
@@ -458,7 +504,7 @@
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h3l1.5 2h6.5A1.5 1.5 0 0 1 17 8.5v6A1.5 1.5 0 0 1 15.5 16h-11A1.5 1.5 0 0 1 3 14.5z"/></svg>
       Open
     </button>
-    <button class="tbtn" id="openProjectBtn" title="Open a Redline project file (.redline.json) you saved earlier — everything stays fully editable: every object, its color, locks, hidden items, all of it">
+    <button class="tbtn" id="openProjectBtn" title="Open a UTZLINE Site Measure project file (.utzline.json — older .redline.json files from before the rename still open too) you saved earlier — everything stays fully editable: every object, its color, locks, hidden items, all of it">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 6a1 1 0 0 1 1-1h3.3l1.2 1.4h7a1 1 0 0 1 1 1v7.1a1 1 0 0 1-1 1h-11.5a1 1 0 0 1-1-1z"/><path d="M10 8.6v4M8 10.6l2 2 2-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Open project
     </button>
@@ -466,13 +512,20 @@
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="1.3"/><circle cx="7" cy="8" r="1.4"/><path d="M3 14.5l4-4 3 3 3.5-3.5L17.5 14" stroke-linecap="round"/></svg>
       Insert image
     </button>
-    <button class="tbtn" id="saveProjectBtn" title="Save a project file (.redline.json) that keeps everything editable — reopen it later with Open project to keep adjusting or adding to it. Handy for working on several plans: give each one its own project file.">
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3.5 3.5h9.6l3.4 3.4v9.1a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1v-11.5a1 1 0 0 1 1-1z"/><path d="M6 3.5v4.2h6v-4.2"/><rect x="6" y="11.3" width="8" height="5.2" rx="0.6"/></svg>
-      Save project
+    <button class="tbtn" id="fileNameBtn" title="Rename this plan — Save, Save PDF, Share and auto-backup all use this name">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12.4 3.6l4 4-9 9-4.6.9.9-4.6z"/></svg>
+      <span id="fileNameBtnLabel">plan</span>
     </button>
-    <button class="tbtn primary" id="exportPdfBtn" title="Save a flattened PDF (filename tagged _FLATTENED) — labels and lines stay true vector, so they're never blurry no matter how far you zoom in, but it can't be reopened here for further editing; use Save project for that">
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5 2.5h6l3.5 3.5V16a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M11 2.5V6h3.5" stroke-linecap="round"/></svg>
-      Save PDF
+    <button class="tbtn primary" id="saveBtn" title="Save everything in one go: a project file (.utzline.json — reopen it later with Open project to keep adjusting) AND a flattened PDF (labels and lines stay true vector, so they're never blurry no matter how far you zoom in, but it can't be reopened here for further editing)">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3.5 3.5h9.6l3.4 3.4v9.1a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1v-11.5a1 1 0 0 1 1-1z"/><path d="M6 3.5v4.2h6v-4.2"/><rect x="6" y="11.3" width="8" height="5.2" rx="0.6"/></svg>
+      Save
+    </button>
+    <button class="tbtn" id="shareBtn" title="Share the finished plan straight to Messages, WhatsApp, email, etc. (sends the same flattened PDF Save produces — falls back to a PNG photo if PDF export can't load)" style="display:none;">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v8"/><path d="M6.5 6.5L10 3l3.5 3.5"/><path d="M4.5 10.5v4a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-4"/></svg>
+      Share
+    </button>
+    <button class="ibtn" id="exitAppBtn" title="Exit app" aria-label="Exit app" style="display:none;">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2H4.8a1 1 0 0 0-1 1v11.6a1 1 0 0 0 1 1H8"/><path d="M7.8 10h8.4M12.8 6.2l3.8 3.8-3.8 3.8"/></svg>
     </button>
     <input type="file" id="fileInput" accept="image/*,application/pdf" style="display:none">
     <input type="file" id="insertImageInput" accept="image/*,application/pdf" style="display:none">
@@ -519,6 +572,17 @@
         <div class="modal-actions">
           <button class="mbtn" id="confirmCancel">Cancel</button>
           <button class="mbtn mbtn-accent" id="confirmOk">Open anyway</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="renameBackdrop" hidden>
+      <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="renameLabel">
+        <p id="renameLabel">Name this plan — used for Save, Save PDF, Share and auto-backup:</p>
+        <input type="text" class="rename-input" id="renameInput" maxlength="120" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="modal-actions">
+          <button class="mbtn" id="renameCancel">Cancel</button>
+          <button class="mbtn mbtn-accent" id="renameOk">Rename</button>
         </div>
       </div>
     </div>
@@ -593,6 +657,120 @@
   var dragMode = null;
   var pinchStart = null;
   var downloadsApi = null;
+  // The claude.ai "downloads" capability (window.claude.use("downloads"))
+  // only bridges in when this page is running inside the Claude app/chat's
+  // own artifact view -- opening the artifact's plain link directly in a
+  // regular browser tab (which is required for the native file/photo
+  // picker to work at all on some mobile in-app previews, see fileInput
+  // above) never gets that bridge, so downloadsApi stays null there
+  // forever. Rather than tell the user saving "isn't available" in that
+  // very normal case, fall back to a completely standard Blob-URL + <a
+  // download> click, which works in any real browser tab on any platform.
+  function browserDownloadBlob(blob, filename){
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  }
+  // A plain <a download> click always just drops the file wherever the
+  // browser's own download setting says to (usually straight into
+  // Downloads, silently) -- it has no way to ask the person where to put
+  // it. showSaveFilePicker() is the real "choose a folder" dialog, but
+  // it's Chromium-only (Chrome/Edge desktop; not Firefox, Safari, or any
+  // mobile browser as of this writing) and only usable outside this app's
+  // own sandboxed artifact view, so it's tried first and this whole file
+  // still works everywhere it isn't available.
+  function saveFilePickerTypes(mimeType, filename){
+    var dot = filename.lastIndexOf(".");
+    var ext = dot >= 0 ? filename.slice(dot) : "";
+    var accept = {};
+    accept[mimeType] = ext ? [ext] : [];
+    return [{ accept: accept }];
+  }
+  // Writes a blob to a file handle (from showSaveFilePicker or a directory
+  // handle's getFileHandle) and reads the result back before declaring
+  // success. This matters because createWritable()/write()/close() can, on
+  // some real-world Windows setups (antivirus file-locking, a OneDrive/
+  // cloud-sync client holding the file, etc.), resolve with no error at all
+  // while the file that actually lands on disk is empty or truncated --
+  // confirmed from a user report of exactly this: a project file that
+  // opened fine in the app's own "saved" flow, then showed as a real
+  // 0-byte file in Windows Explorer, and understandably failed to open
+  // ("doesn't look like a project file") on another device. Comparing the
+  // written file's size back against the blob's own size catches that
+  // silently-empty case so the caller can react (fall back to a plain
+  // download) instead of reporting a false "saved".
+  function verifiedHandleWrite(handle, blob){
+    return handle.createWritable().then(function(w){
+      return w.write(blob).then(function(){ return w.close(); });
+    }).then(function(){
+      return handle.getFile();
+    }).then(function(f){
+      if (!f || f.size !== blob.size) return Promise.reject({ code: "empty_write" });
+      return { status: "saved" };
+    });
+  }
+  function saveBlobSmart(blob, filename){
+    if (downloadsApi) return downloadsApi.save({ filename: filename, data: blob });
+    if (typeof window.showSaveFilePicker === "function"){
+      return window.showSaveFilePicker({ suggestedName: filename, types: saveFilePickerTypes(blob.type, filename) })
+        .then(function(handle){ return verifiedHandleWrite(handle, blob); })
+        .catch(function(err){
+          if (err && err.name === "AbortError") return Promise.reject({ code: "declined" });
+          // Picker exists but refused for some other reason (a permissions
+          // policy in this context, an OS-level dialog failure, a write
+          // that silently produced an empty file -- see verifiedHandleWrite
+          // above -- etc.) -- still get the file out via a plain download
+          // rather than leaving nothing (or a corrupt file) at all.
+          return new Promise(function(resolve, reject){
+            try{ browserDownloadBlob(blob, filename); resolve({ status: "saved" }); }
+            catch(e){ reject(e); }
+          });
+        });
+    }
+    return new Promise(function(resolve, reject){
+      try{ browserDownloadBlob(blob, filename); resolve({ status: "saved" }); }
+      catch(e){ reject(e); }
+    });
+  }
+  // Save PDF's own build step (image decode + svg2pdf.js) is async and can
+  // take a real moment on a large photo -- long enough that, by the time a
+  // blob is finally ready to hand to showSaveFilePicker(), the click that
+  // started it is often no longer "fresh" enough for the browser to allow
+  // the picker at all (it silently refuses and this would fall back to a
+  // plain download every time on anything but a tiny file). Asking WHERE
+  // to save first -- synchronously off the click, before any of that
+  // async work runs -- keeps the dialog reliable regardless of how long
+  // the render takes; writeToSaveTarget() below fills in the chosen
+  // location once the file is actually ready.
+  function requestSaveTarget(mimeType, filename){
+    if (downloadsApi || typeof window.showSaveFilePicker !== "function") return Promise.resolve({ kind: "auto" });
+    return window.showSaveFilePicker({ suggestedName: filename, types: saveFilePickerTypes(mimeType, filename) })
+      .then(function(handle){ return { kind: "handle", handle: handle }; })
+      .catch(function(err){
+        if (err && err.name === "AbortError") return { kind: "declined" };
+        return { kind: "auto" };
+      });
+  }
+  function writeToSaveTarget(target, blob, filename){
+    if (target.kind === "declined") return Promise.reject({ code: "declined" });
+    if (target.kind === "handle"){
+      return verifiedHandleWrite(target.handle, blob).catch(function(err){
+        if (err && err.code === "declined") return Promise.reject(err);
+        // Same empty/corrupt-write safety net as saveBlobSmart's picker
+        // branch -- fall back to a plain download rather than reporting a
+        // false "saved" over a file that didn't actually land right.
+        return new Promise(function(resolve, reject){
+          try{ browserDownloadBlob(blob, filename); resolve({ status: "saved" }); }
+          catch(e){ reject(e); }
+        });
+      });
+    }
+    return saveBlobSmart(blob, filename);
+  }
   var editingId = null;
   // Panning (moving the VIEW, not any object -- the background photo's own
   // position never changes either way) is deliberately not what a plain
@@ -739,23 +917,29 @@
   // ---- periodic local backup ----
   // Separate from the IndexedDB autosave above (which only restores your
   // in-progress edits if you reopen this same tab/browser): this actually
-  // offers a real PNG for download every few minutes, so you have a file
-  // on disk even if the browser profile itself is lost. Only fires when
-  // something changed since the last backup (or the last manual Save), so
-  // it won't prompt while you're just looking at a plan.
+  // saves a real PNG file every few minutes, so you have a file on disk
+  // even if the browser profile itself is lost. Only fires when something
+  // changed since the last backup (or the last manual Save), so it won't
+  // do anything while you're just looking at a plan.
   //
-  // IMPORTANT, and worth being upfront about: this can NOT run silently in
-  // the background to a chosen folder (Roaming or otherwise). Every single
-  // save — this automatic one included — goes through the platform's own
-  // downloads capability, which always shows its own confirmation (name +
-  // size) before anything reaches disk; there's no API this page can call
-  // to skip that or to target a specific folder itself. The only way to
-  // make repeated saves land somewhere specific with no extra file-picker
-  // on top of that confirmation is to set your BROWSER's default download
-  // folder once (e.g. Chrome: chrome://settings/downloads, with "Ask
-  // where to save" off) to wherever you want these — a synced Roaming
-  // folder included — after which every accepted save goes straight
-  // there.
+  // Where that file lands depends on what's available, checked in this
+  // order every time it fires:
+  //  1. The claude.ai "downloads" capability (downloadsApi), when this
+  //     page is running inside the Claude app/chat's own artifact view --
+  //     that capability always shows its own confirmation (name + size)
+  //     before anything reaches disk; there's no way to skip that or to
+  //     target a specific folder from inside that view.
+  //  2. A folder the person has explicitly chosen via the "auto-backup
+  //     folder" button (backupDirHandle, below) -- File System Access API
+  //     (Chrome/Edge desktop only). Once granted, THIS is genuinely
+  //     silent: no picker, no confirmation, every backup just appears in
+  //     that folder. Pick a folder that's itself synced/roaming (a OneDrive
+  //     folder, a mapped network drive, a Windows roaming profile path)
+  //     and backups end up "roaming" too -- the app only needs to know
+  //     which local folder to write into; whatever already syncs that
+  //     folder does the rest.
+  //  3. Otherwise, a plain downloaded file (browserDownloadBlob) -- lands
+  //     wherever the browser's own default download folder is set to.
   var AUTOBACKUP_MIN_INTERVAL_MIN = 5, AUTOBACKUP_MAX_INTERVAL_MIN = 60, AUTOBACKUP_STEP_MIN = 5;
   var autoBackupIntervalMin = 5;
   try{ var storedInt = parseInt(localStorage.getItem("redline_autobackup_interval"), 10); if (storedInt) autoBackupIntervalMin = clamp(storedInt, AUTOBACKUP_MIN_INTERVAL_MIN, AUTOBACKUP_MAX_INTERVAL_MIN); }catch(e){}
@@ -769,6 +953,67 @@
   // be touched.
   var autoBackupLocked = false;
   try{ autoBackupLocked = localStorage.getItem("redline_autobackup_locked") === "1"; }catch(e){}
+  // ---- optional direct-to-folder backup target (File System Access API) ----
+  // Meant for Chrome/Edge DESKTOP only. This used to be a plain
+  // typeof-check on showDirectoryPicker, on the assumption that mobile
+  // browsers never expose it at all -- true for a long time, but Chrome for
+  // Android has since started exposing it on at least some versions/
+  // devices, even though picking a real folder there (especially a
+  // cloud-storage app's folder via Android's document-provider system,
+  // e.g. Dropbox) is exactly the kind of path that produced a real 0-byte-
+  // write bug report -- Android's underlying storage plumbing for this API
+  // isn't the same reliable local-folder access it is on desktop. So this
+  // now ALSO excludes anything that looks like a mobile device, regardless
+  // of what the API itself claims to support, matching what this feature's
+  // own tooltip has always promised ("Chrome/Edge desktop only").
+  // Checks the plain user-agent string FIRST and treats any hit as mobile,
+  // rather than trusting navigator.userAgentData.mobile as the deciding
+  // vote -- that flag reflects Chrome's phone-vs-tablet FORM FACTOR guess,
+  // and reportedly comes back false for at least some Android tablets/
+  // devices, which would have let this exact folder button slip back
+  // through on Android despite the check existing at all. An Android (or
+  // iOS) user agent is reason enough on its own; userAgentData is only
+  // consulted as a fallback signal when the user agent string itself is
+  // inconclusive.
+  function isLikelyMobileDevice(){
+    if (/Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent || "")) return true;
+    try{
+      if (navigator.userAgentData && typeof navigator.userAgentData.mobile === "boolean") return navigator.userAgentData.mobile;
+    }catch(e){}
+    return false;
+  }
+  var backupDirSupported = typeof window.showDirectoryPicker === "function" && !isLikelyMobileDevice();
+
+  // Exit button: only makes sense once this is running as an installed app
+  // on a phone/tablet -- installed Windows/Mac copies already get a native
+  // window close (X) from the OS, and a plain mobile browser tab already
+  // has its own close control too, so the button stays hidden there.
+  function isStandaloneDisplay(){
+    try{
+      return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    }catch(e){ return false; }
+  }
+  var exitAppBtn = document.getElementById("exitAppBtn");
+  if (isLikelyMobileDevice() && isStandaloneDisplay()){
+    exitAppBtn.style.display = "";
+  }
+  exitAppBtn.addEventListener("click", function(){
+    // There's no API for a web page to force-quit the app hosting it --
+    // window.close() only actually works when this page is the sole entry
+    // in its own history (true for an app opened fresh from its icon), so
+    // try that first...
+    try{ window.close(); }catch(e){}
+    // ...and if we're still here a moment later, it didn't take (some
+    // Android builds block it even then), so fall back to telling the
+    // person how to close it themselves instead of doing nothing silently.
+    setTimeout(function(){
+      showToast("Couldn't close automatically — swipe this app away from your Recent Apps list, or use your device's Back button.");
+    }, 350);
+  });
+
+  var backupDirHandle = null;
+  var backupDirPermissionOK = false;
+  var backupDirName = "";
   function autoBackupFilename(){
     var d = new Date();
     var pad = function(n){ return String(n).padStart(2, "0"); };
@@ -776,19 +1021,137 @@
     var timePart = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
     return (state.fileBase || "plan") + "_FLATTENED autobackup " + datePart + " " + timePart + ".png";
   }
+  // Same timestamp pattern as autoBackupFilename, but for the fully editable
+  // project file (see projectPayload() further down) rather than a
+  // flattened picture. Only used on the direct-to-folder backup path (see
+  // maybeAutoBackup below) -- a flattened PNG shows what a plan looked like
+  // at that moment, but it can't be reopened and kept working on; for a
+  // business relying on this as a real safety net, the thing worth
+  // protecting is the actual editable state, not just a picture of it.
+  function autoBackupProjectFilename(){
+    var d = new Date();
+    var pad = function(n){ return String(n).padStart(2, "0"); };
+    var datePart = d.getFullYear() + "_" + pad(d.getMonth() + 1) + "_" + pad(d.getDate());
+    var timePart = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    return (state.fileBase || "plan") + " autobackup " + datePart + " " + timePart + ".utzline.json";
+  }
+  // Writes straight into the chosen directory handle -- no picker, no
+  // confirmation dialog, just a file appearing there. A previously-granted
+  // permission can lapse (browser restart, OS-level revocation, the folder
+  // itself being moved/deleted) with no warning ahead of time, so every
+  // write is guarded: a permission-shaped failure rejects with a specific
+  // code the caller can react to (flip the UI to "needs reconnecting")
+  // rather than being treated the same as a normal I/O error.
+  function writeBlobToBackupDir(blob, filename){
+    // verifiedHandleWrite (defined earlier, alongside the Save PDF/Save
+    // project save-picker paths) reads the write back and rejects with
+    // { code: "empty_write" } if it landed as an empty/truncated file --
+    // the same silent-failure mode those paths guard against.
+    return backupDirHandle.getFileHandle(filename, { create: true }).then(function(fh){
+      return verifiedHandleWrite(fh, blob);
+    }).catch(function(err){
+      if (err && (err.name === "NotAllowedError" || err.name === "SecurityError")){
+        return Promise.reject({ code: "permission_lost" });
+      }
+      return Promise.reject(err);
+    });
+  }
   function maybeAutoBackup(){
-    if (!autoBackupOn || !backupDirty || !state.imageW || !downloadsApi) return;
+    var canDownloadsApi = !!downloadsApi;
+    var canFolder = backupDirSupported && backupDirHandle && backupDirPermissionOK;
+    // NOTE: this used to also require (canDownloadsApi || canFolder) here
+    // and just quietly do nothing at all otherwise -- which meant
+    // auto-backup was a complete no-op, with no warning of any kind, on
+    // every mobile browser (no File System Access API, so canFolder is
+    // always false there) and every non-claude.ai context without a chosen
+    // folder. The checkbox/interval controls looked and behaved like a
+    // working feature the whole time. See the plain-download fallback
+    // below, which now covers exactly that gap.
+    if (!autoBackupOn || !backupDirty || !state.imageW) return;
     if (Date.now() - lastBackupAt < autoBackupIntervalMin * 60 * 1000) return;
     backupDirty = false;
     lastBackupAt = Date.now();
-    renderExportBlob().then(function(blob){
-      return downloadsApi.save({ filename: autoBackupFilename(), data: blob });
-    }).then(function(res){
-      if (res && res.status === "saved") showToast("Backed up.");
-    }).catch(function(){ backupDirty = true; }); // retry on the next tick
+    if (canDownloadsApi){
+      renderExportBlob().then(function(blob){
+        return downloadsApi.save({ filename: autoBackupFilename(), data: blob });
+      }).then(function(res){
+        if (res && res.status === "saved") showToast("Backed up.");
+      }).catch(function(){
+        backupDirty = true; // retry on the next tick
+      });
+      return;
+    }
+    if (canFolder){
+      // Folder path: write BOTH a flattened PNG (a quick visual reference)
+      // AND the actual editable project file -- the real safety net here,
+      // since reopening it with Open project means picking up exactly
+      // where you left off, not re-tracing every annotation from a
+      // picture. Both writes are independently verified (see
+      // writeBlobToBackupDir / verifiedHandleWrite); if either one fails,
+      // the whole backup counts as not done and retries next tick -- a PNG
+      // with no matching reopenable project (or vice versa) isn't a real
+      // backup.
+      var jsonBlob;
+      try{
+        jsonBlob = new Blob([JSON.stringify(projectPayload())], { type: "application/json" });
+      }catch(e){
+        backupDirty = true;
+        return;
+      }
+      renderExportBlob().then(function(pngBlob){
+        return writeBlobToBackupDir(pngBlob, autoBackupFilename());
+      }).then(function(){
+        return writeBlobToBackupDir(jsonBlob, autoBackupProjectFilename());
+      }).then(function(){
+        showToast("Backed up.");
+      }).catch(function(err){
+        backupDirty = true; // retry on the next tick
+        if (err && err.code === "permission_lost"){
+          backupDirPermissionOK = false;
+          refreshBackupDirUI();
+        }
+      });
+      return;
+    }
+    // Neither the claude.ai downloads capability nor a chosen backup folder
+    // is available -- true on every mobile browser and any desktop browser
+    // without the File System Access API (Firefox, Safari). Fall back to a
+    // plain download of both files, exactly like Save (project + PDF)
+    // already does when neither of those is available, rather than
+    // treating "no fancy save target" as "do nothing at all". There's no
+    // write-back to verify here (a plain download can't be read back the
+    // way a folder handle can), so this path just trusts the browser the
+    // same way a manual Save's own plain-download fallback already does.
+    var jsonBlob2;
+    try{
+      jsonBlob2 = new Blob([JSON.stringify(projectPayload())], { type: "application/json" });
+    }catch(e){
+      backupDirty = true;
+      return;
+    }
+    renderExportBlob().then(function(pngBlob){
+      browserDownloadBlob(pngBlob, autoBackupFilename());
+      browserDownloadBlob(jsonBlob2, autoBackupProjectFilename());
+      showToast("Backed up.");
+    }).catch(function(){
+      backupDirty = true; // retry on the next tick
+    });
   }
   setInterval(maybeAutoBackup, 30 * 1000);
   var autosaveTimer = null;
+  // This is the safety net that lets a reload/crash/accidental tab-close
+  // pick right back up (see boot(), which restores from idbGet("current")
+  // when there's no explicit project file to open) -- it's separate from,
+  // and much more fine-grained than, the periodic auto-backup above (this
+  // fires ~700ms after every single edit). It used to fail completely
+  // silently (a bare .catch(function(){})): private browsing, a full
+  // storage quota, or the profile's IndexedDB being unavailable for any
+  // reason would leave someone editing for hours with zero durable safety
+  // net and no indication anything was wrong. It's warned about once per
+  // occurrence now (not spammed on every keystroke) so a real problem
+  // surfaces instead of staying invisible until a lost tab makes it obvious
+  // the hard way.
+  var autosaveWarned = false;
   function scheduleAutosave(){
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(function(){
@@ -796,8 +1159,20 @@
         idbSet("current", {
           imageDataURL: state.imageDataURL, imageW: state.imageW, imageH: state.imageH,
           fileBase: state.fileBase, objects: state.objects, style: defaultStyle()
-        }).catch(function(){});
-      }catch(e){}
+        }).then(function(){
+          autosaveWarned = false;
+        }).catch(function(){
+          if (!autosaveWarned){
+            autosaveWarned = true;
+            showToast("Local autosave isn't working right now — use Save project to keep a copy of your work.");
+          }
+        });
+      }catch(e){
+        if (!autosaveWarned){
+          autosaveWarned = true;
+          showToast("Local autosave isn't working right now — use Save project to keep a copy of your work.");
+        }
+      }
     }, 700);
   }
 
@@ -2132,6 +2507,20 @@
     wrap.style.left = (clientX - r.left) + "px";
     wrap.style.top = (clientY - r.top) + "px";
 
+    // Delete sits at the top of the menu -- it's the row people reach for
+    // most often, and putting it first means one same-spot tap instead of
+    // hunting past Edit text/Lock every time. Only while unlocked -- same
+    // rule as dragging or editing it: a locked item has to be freed first,
+    // so it's never removed by an accidental right-click tap while it's
+    // meant to be protected.
+    if (!obj.locked){
+      popoverRow(wrap, DELETE_ICON + "<span>Delete</span>", function(){
+        hideLockPopover();
+        state.selectedId = obj.id;
+        deleteSelected();
+      });
+    }
+
     // Editing straight from the right-click menu, while unlocked -- a
     // locked item can't be typed into until it's freed, same as it can't
     // be dragged. Every type with an editable label gets this shortcut:
@@ -2163,17 +2552,6 @@
       showToast(obj.locked ? "Item locked." : "Item unlocked.");
     });
 
-    // Delete only while unlocked -- same rule as dragging or editing it: a
-    // locked item has to be freed first, so it's never removed by an
-    // accidental right-click tap while it's meant to be protected.
-    if (!obj.locked){
-      popoverRow(wrap, DELETE_ICON + "<span>Delete</span>", function(){
-        hideLockPopover();
-        state.selectedId = obj.id;
-        deleteSelected();
-      });
-    }
-
     stage.appendChild(wrap);
     lockPopoverEl = wrap;
     // Deferred so the very contextmenu/click that opened this popover
@@ -2203,6 +2581,16 @@
     var styleType = obj ? obj.type : state.tool;
     var curColor = obj ? obj.color : defaultColorFor(styleType);
 
+    // color row -- doesn't apply to a pasted/inserted image: there's
+    // nothing to tint, the image IS the content (see makeImage() above),
+    // so its border is always just the neutral white/black halo every
+    // other shape's border also gets underneath its actual color. Showing
+    // a color picker here anyway used to silently do nothing when clicked
+    // (it wrote obj.color, but the image renderer never reads it) -- which
+    // read exactly like a real "the color picker doesn't work" bug rather
+    // than a control that was never supposed to be there for a photo.
+    var hasColor = styleType !== "image";
+    if (hasColor){
     // color row
     var row = document.createElement("div"); row.className = "panel-row";
     var lab = document.createElement("span"); lab.className = "panel-label"; lab.textContent = "Color";
@@ -2235,13 +2623,14 @@
       sw.appendChild(d);
     });
     row.appendChild(sw); panel.appendChild(row);
+    }
 
     // "Make default" -- only worth showing once there's a selected object
     // whose color actually differs from ITS TYPE's current default
     // (otherwise there'd be nothing for the button to do). Only that one
     // type's default changes -- a callout's default stays whatever it was
     // even after this makes red the new default for dimensions, say.
-    if (obj && obj.color !== defaultColorFor(styleType)){
+    if (hasColor && obj && obj.color !== defaultColorFor(styleType)){
       var mkDef = document.createElement("button");
       mkDef.className = "make-default-btn";
       mkDef.title = "Use this color for new " + styleType + " objects too";
@@ -2466,18 +2855,98 @@
   var confirmOk = document.getElementById("confirmOk");
   var confirmCancel = document.getElementById("confirmCancel");
   var confirmResolve = null;
+  var confirmOkCallback = null;
   function showConfirm(msg){
+    confirmOkCallback = null;
     confirmMsg.textContent = msg;
     confirmBackdrop.hidden = false;
     return new Promise(function(resolve){ confirmResolve = resolve; });
   }
+  // Same dialog, but invokes onOk() SYNCHRONOUSLY from inside the OK
+  // button's own click handler (a fresh, genuine tap) instead of via a
+  // Promise .then() microtask. Use this variant whenever the confirmed
+  // action needs to open the native file/photo picker: mobile Safari and
+  // Chrome silently refuse to open input[type=file] once a Promise hop
+  // separates the .click() from the tap that "caused" it, even though the
+  // same code works fine on desktop.
+  function showConfirmSync(msg, onOk){
+    confirmResolve = null;
+    confirmMsg.textContent = msg;
+    confirmBackdrop.hidden = false;
+    confirmOkCallback = onOk;
+  }
   function closeConfirm(result){
     confirmBackdrop.hidden = true;
-    if (confirmResolve){ var r = confirmResolve; confirmResolve = null; r(result); }
+    var cb = confirmOkCallback; confirmOkCallback = null;
+    var resolve = confirmResolve; confirmResolve = null;
+    if (result && cb) cb();
+    if (resolve) resolve(result);
   }
   confirmOk.addEventListener("click", function(){ closeConfirm(true); });
   confirmCancel.addEventListener("click", function(){ closeConfirm(false); });
   confirmBackdrop.addEventListener("click", function(e){ if (e.target === confirmBackdrop) closeConfirm(false); });
+
+  /* ============================== rename (file name) ============================== */
+  // Every export/save/auto-backup filename is built from state.fileBase --
+  // previously the ONLY way to influence that was to rename the source file
+  // before opening it (or accept the fixed "plan" default from New), with
+  // nowhere in the app to see or change it afterwards. This is a real
+  // in-page dialog for the same reason the confirm dialog above is: an
+  // artifact sandbox blocks the native window.prompt().
+  var renameBackdrop = document.getElementById("renameBackdrop");
+  var renameInput = document.getElementById("renameInput");
+  var renameOk = document.getElementById("renameOk");
+  var renameCancel = document.getElementById("renameCancel");
+  var fileNameBtn = document.getElementById("fileNameBtn");
+  var fileNameBtnLabel = document.getElementById("fileNameBtnLabel");
+  var renameResolve = null;
+  function showRenameDialog(currentName){
+    renameInput.value = currentName || "";
+    renameBackdrop.hidden = false;
+    // Pre-select the whole name (not just focus) so typing a new one
+    // straight away replaces it, same as most "rename" fields elsewhere.
+    renameInput.focus();
+    renameInput.select();
+    return new Promise(function(resolve){ renameResolve = resolve; });
+  }
+  function closeRename(value){
+    renameBackdrop.hidden = true;
+    var resolve = renameResolve; renameResolve = null;
+    if (resolve) resolve(value);
+  }
+  // Strips characters Windows/Android file systems reject outright
+  // (< > : " / \ | ? * and control characters), trims stray leading/
+  // trailing spaces, dots and underscores left over from that, and falls
+  // back to "plan" if nothing usable survives -- every generated filename
+  // downstream assumes fileBase is always a safe, non-empty string.
+  function sanitizeFileBase(name){
+    var cleaned = String(name || "")
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, "")
+      .trim()
+      .replace(/^[._]+|[._\s]+$/g, "");
+    return cleaned.slice(0, 120) || "plan";
+  }
+  function updateFileNameBtn(){
+    fileNameBtnLabel.textContent = state.fileBase || "plan";
+  }
+  fileNameBtn.addEventListener("click", function(){
+    showRenameDialog(state.fileBase).then(function(value){
+      if (value === null) return; // cancelled
+      var clean = sanitizeFileBase(value);
+      if (clean === state.fileBase) return;
+      state.fileBase = clean;
+      updateFileNameBtn();
+      backupDirty = true; // next auto-backup should pick up the new name promptly
+      showToast("Renamed to “" + clean + "”.");
+    });
+  });
+  renameOk.addEventListener("click", function(){ closeRename(renameInput.value); });
+  renameCancel.addEventListener("click", function(){ closeRename(null); });
+  renameBackdrop.addEventListener("click", function(e){ if (e.target === renameBackdrop) closeRename(null); });
+  renameInput.addEventListener("keydown", function(e){
+    if (e.key === "Enter"){ e.preventDefault(); closeRename(renameInput.value); }
+    else if (e.key === "Escape"){ e.preventDefault(); closeRename(null); }
+  });
 
   /* ============================== open / drop image ============================== */
   document.getElementById("newBtn").addEventListener("click", function(){
@@ -2493,9 +2962,7 @@
   });
   document.getElementById("openBtn").addEventListener("click", function(){
     if (!state.objects.length){ fileInput.click(); return; }
-    showConfirm("Open a new image? This replaces the current plan and its " + state.objects.length + " annotation(s).").then(function(ok){
-      if (ok) fileInput.click();
-    });
+    showConfirmSync("Open a new image? This replaces the current plan and its " + state.objects.length + " annotation(s).", function(){ fileInput.click(); });
   });
   fileInput.addEventListener("change", function(){
     var f = fileInput.files && fileInput.files[0];
@@ -2547,51 +3014,87 @@
   }
   function ensurePdfWorker(){
     if (!ensurePdfWorker._set){
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.min.js";
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
       ensurePdfWorker._set = true;
     }
   }
-  // A naive fixed "3x the PDF's 72dpi base" render is right for a PDF that
-  // was itself built at a plain 72dpi scale (a typical plotted/scanned
-  // drawing sheet) -- but Save PDF here embeds the base photo at its FULL
-  // native resolution, so reopening one of Redline's own exports at a flat
-  // 3x could blow a photo up to 2x+ its original pixel size for no benefit
-  // (it's still the same raster underneath, just needlessly upscaled) and
-  // land on a canvas large enough to silently fail in a lot of real
-  // browsers -- iPad Safari's canvas limit in particular is well under what
-  // a big construction photo needs. Capping the longest side keeps every
-  // import safely inside that ceiling while still comfortably exceeding
-  // print quality for a normal drawing sheet.
+  // The render scale here must match Save PDF's own page-size math (see
+  // PX_TO_PT below) or reopening this app's own exports comes back softer
+  // (or needlessly larger) than the original photo. Save PDF shrinks a
+  // photo's pixel width by PX_TO_PT to get the page's width in points,
+  // scaling every page uniformly to a 300dpi-equivalent size; rendering an
+  // import at 1/PX_TO_PT undoes exactly that, so a PDF this app exported
+  // comes back at its original pixel resolution -- not blown up, not
+  // softened. For a PDF from anywhere else (a typical plotted/scanned
+  // drawing sheet, usually built at a plain 72dpi page scale), the same
+  // factor lands on a 300dpi rasterization -- comfortably print-quality.
+  // Very large sheets/photos can still land on a canvas size that silently
+  // fails in a lot of real browsers -- iPad Safari's canvas limit in
+  // particular is well under what a big construction photo needs -- so
+  // PDF_IMPORT_MAX_DIM caps the longest side as a safety net; that cap is
+  // the one case where a reopened export won't come back at full native
+  // resolution, same tradeoff Save PDF itself would eventually hit.
   var PDF_IMPORT_MAX_DIM = 6000;
-  // Loads a PDF and renders ONE page of it, at a resolution generous enough
-  // for later zoom/annotation work (3x the PDF's own 72dpi base is a
-  // print-quality ~216dpi page, capped per PDF_IMPORT_MAX_DIM above). A
-  // single-page PDF just uses page 1; a multi-page one shows a thumbnail
-  // picker first and waits for the person to choose -- real drawing sets are
-  // very often handed over as one PDF with every sheet inside it, so
-  // silently grabbing page 1 every time would quietly drop the rest without
-  // saying so. Backing out of the picker rejects with
-  // "pdf_import_cancelled", which both callers below treat as "do nothing"
-  // rather than an error to show.
+  // Loads a PDF and renders ONE page of it. A single-page PDF just uses
+  // page 1; a multi-page one shows a thumbnail picker first and waits for
+  // the person to choose -- real drawing sets are very often handed over as
+  // one PDF with every sheet inside it, so silently grabbing page 1 every
+  // time would quietly drop the rest without saying so. Backing out of the
+  // picker rejects with "pdf_import_cancelled", which both callers below
+  // treat as "do nothing" rather than an error to show.
+  // Mirrors waitForPdfLibs() below (for PDF EXPORT) -- pdf.js is a large
+  // CDN-hosted script, and picking a PDF to import/insert right after the
+  // app first opens (a very normal thing to do -- it's often the very
+  // first action) could easily land before it's finished loading. This
+  // used to bail out immediately in that case with "still loading, try
+  // again" and no retry -- which, from the person's side, looked exactly
+  // like "inserting a PDF doesn't always work": the same file could fail
+  // moments after opening the app and then work fine on a second try once
+  // the library had quietly finished loading in the background.
+  function waitForPdfImportLibs(timeoutMs){
+    return new Promise(function(resolve){
+      if (pdfImportLibsReady() || window.__pdfImportLibFailed){ resolve(pdfImportLibsReady()); return; }
+      var elapsed = 0, step = 150;
+      var iv = setInterval(function(){
+        elapsed += step;
+        if (pdfImportLibsReady() || window.__pdfImportLibFailed || elapsed >= timeoutMs){
+          clearInterval(iv);
+          resolve(pdfImportLibsReady());
+        }
+      }, step);
+    });
+  }
   function pdfFileToImage(file){
-    if (!pdfImportLibsReady()){
-      return Promise.reject({ code: window.__pdfImportLibFailed ? "pdf_import_failed" : "pdf_import_loading" });
-    }
-    ensurePdfWorker();
-    return file.arrayBuffer().then(function(buf){
-      return window.pdfjsLib.getDocument({ data: buf }).promise;
-    }).then(function(pdfDoc){
-      if (pdfDoc.numPages <= 1){
-        return renderPdfPage(pdfDoc, 1, 3, PDF_IMPORT_MAX_DIM).then(function(res){
-          res.pageCount = 1; res.pageNum = 1; return res;
-        });
-      }
-      return showPdfPagePicker(pdfDoc).then(function(pageNum){
-        if (!pageNum) return Promise.reject({ code: "pdf_import_cancelled" });
-        return renderPdfPage(pdfDoc, pageNum, 3, PDF_IMPORT_MAX_DIM).then(function(res){
-          res.pageCount = pdfDoc.numPages; res.pageNum = pageNum; return res;
+    function proceed(){
+      ensurePdfWorker();
+      // Computed per-call (not hoisted to a top-level constant) because
+      // PX_TO_PT is declared further down in this same script -- by the
+      // time a file is actually opened, the whole script has finished
+      // running and PX_TO_PT already has its real value, but evaluating
+      // this at parse time would see it as undefined.
+      var importScale = 1 / PX_TO_PT;
+      return file.arrayBuffer().then(function(buf){
+        return window.pdfjsLib.getDocument({ data: buf }).promise;
+      }).then(function(pdfDoc){
+        if (pdfDoc.numPages <= 1){
+          return renderPdfPage(pdfDoc, 1, importScale, PDF_IMPORT_MAX_DIM).then(function(res){
+            res.pageCount = 1; res.pageNum = 1; return res;
+          });
+        }
+        return showPdfPagePicker(pdfDoc).then(function(pageNum){
+          if (!pageNum) return Promise.reject({ code: "pdf_import_cancelled" });
+          return renderPdfPage(pdfDoc, pageNum, importScale, PDF_IMPORT_MAX_DIM).then(function(res){
+            res.pageCount = pdfDoc.numPages; res.pageNum = pageNum; return res;
+          });
         });
       });
+    }
+    if (pdfImportLibsReady()) return proceed();
+    if (window.__pdfImportLibFailed) return Promise.reject({ code: "pdf_import_failed" });
+    return waitForPdfImportLibs(8000).then(function(ready){
+      if (window.__pdfImportLibFailed) return Promise.reject({ code: "pdf_import_failed" });
+      if (!ready) return Promise.reject({ code: "pdf_import_loading" });
+      return proceed();
     });
   }
   function pdfImportErrorToast(err){
@@ -2599,6 +3102,48 @@
     if (err && err.code === "pdf_import_loading") return "PDF import is still loading — try again in a second.";
     console.error("PDF import failed:", err);
     return "Couldn't open that PDF.";
+  }
+
+  // Reads a plain image file (a PDF goes through pdfFileToImage above
+  // instead) and confirms it actually decodes, via a real <img> element --
+  // not just a MIME-type check, since some files a phone hands over as
+  // "image/*" don't actually decode (a HEIC photo with no decoder
+  // available, a truncated/corrupt transfer, etc.). Both this decode step
+  // AND FileReader.readAsDataURL itself used to be able to end in dead
+  // silence -- neither onload nor onerror looked guaranteed to ever fire,
+  // and nothing else was watching -- which from the person's side reads
+  // exactly like "Insert image doesn't always work": no error, just
+  // nothing happening. One timeout spanning the whole read+decode now
+  // guarantees a real outcome (success OR a visible error) either way.
+  function readImageFile(file, timeoutMs){
+    return new Promise(function(resolve, reject){
+      var settled = false;
+      var to = setTimeout(function(){ settle(reject, { code: "image_read_timeout" }); }, timeoutMs || 20000);
+      function settle(fn, arg){
+        if (settled) return;
+        settled = true;
+        clearTimeout(to);
+        fn(arg);
+      }
+      var reader = new FileReader();
+      reader.onload = function(){
+        var img = new Image();
+        img.onload = function(){ settle(resolve, { dataUrl: reader.result, w: img.naturalWidth, h: img.naturalHeight }); };
+        img.onerror = function(){ settle(reject, { code: "image_decode_failed" }); };
+        img.src = reader.result;
+      };
+      reader.onerror = function(){ settle(reject, { code: "image_read_failed" }); };
+      try{
+        reader.readAsDataURL(file);
+      }catch(e){
+        settle(reject, { code: "image_read_failed" });
+      }
+    });
+  }
+  function imageReadErrorToast(err){
+    if (err && err.code === "image_read_timeout") return "That file is taking too long to load — try again, or a smaller photo.";
+    if (err && err.code === "image_decode_failed") return "Could not read that image.";
+    return "Could not read that file.";
   }
 
   /* ---- multi-page picker: a thumbnail grid modal, reusing the same
@@ -2647,29 +3192,24 @@
       }).catch(function(err){ if (err && err.code === "pdf_import_cancelled") return; showToast(pdfImportErrorToast(err)); });
       return;
     }
-    var reader = new FileReader();
-    reader.onload = function(){
-      var img = new Image();
-      img.onload = function(){
-        applyLoadedImage(reader.result, img.naturalWidth, img.naturalHeight, file.name);
-        showToast("Loaded " + file.name);
-      };
-      img.onerror = function(){ showToast("Could not read that image."); };
-      img.src = reader.result;
-    };
-    reader.onerror = function(){ showToast("Could not read that file."); };
-    reader.readAsDataURL(file);
+    readImageFile(file).then(function(res){
+      applyLoadedImage(res.dataUrl, res.w, res.h, file.name);
+      showToast("Loaded " + file.name);
+    }).catch(function(err){
+      showToast(imageReadErrorToast(err));
+    });
   }
   function applyLoadedImage(dataUrl, w, h, fileName){
     state.imageDataURL = dataUrl;
     state.imageW = w; state.imageH = h;
-    state.fileBase = (fileName || "plan").replace(/\.[a-z0-9]+$/i, "");
+    state.fileBase = sanitizeFileBase((fileName || "plan").replace(/\.[a-z0-9]+$/i, ""));
     state.objects = []; state.selectedId = null;
     history = []; historyIndex = -1;
     applyImageToDom();
     fitToView();
     pushHistory();
     renderAll();
+    updateFileNameBtn();
   }
   function applyImageToDom(){
     baseImage.setAttribute("href", state.imageDataURL);
@@ -2720,18 +3260,12 @@
       }).catch(function(err){ if (err && err.code === "pdf_import_cancelled") return; showToast(pdfImportErrorToast(err)); });
       return;
     }
-    var reader = new FileReader();
-    reader.onload = function(){
-      var img = new Image();
-      img.onload = function(){
-        placeInsertedImage(reader.result, img.naturalWidth, img.naturalHeight);
-        showToast("Image inserted — drag a corner to resize/stretch, or drag it to move.");
-      };
-      img.onerror = function(){ showToast("Could not read that image."); };
-      img.src = reader.result;
-    };
-    reader.onerror = function(){ showToast("Could not read that file."); };
-    reader.readAsDataURL(file);
+    readImageFile(file).then(function(res){
+      placeInsertedImage(res.dataUrl, res.w, res.h);
+      showToast("Image inserted — drag a corner to resize/stretch, or drag it to move.");
+    }).catch(function(err){
+      showToast(imageReadErrorToast(err));
+    });
   }
   // Shared placement logic for anything landing as a new "image" object,
   // whichever source it came from (a plain image file/paste, or a rendered
@@ -2755,7 +3289,6 @@
   }
 
   /* ============================== export ============================== */
-  document.getElementById("exportPdfBtn").addEventListener("click", exportPDF);
   var autoBackupCheckbox = document.getElementById("autoBackupToggle");
   var autoBackupGroup = document.getElementById("autoBackupGroup");
   var autoBackupMinusBtn = document.getElementById("autoBackupMinus");
@@ -2795,7 +3328,81 @@
     autoBackupLocked = !autoBackupLocked;
     try{ localStorage.setItem("redline_autobackup_locked", autoBackupLocked ? "1" : "0"); }catch(e){}
     refreshAutoBackupUI();
+    refreshBackupDirUI(); // the folder button is locked/unlocked together with everything else here
     showToast(autoBackupLocked ? "Auto-backup settings locked." : "Auto-backup settings unlocked.");
+  });
+  // ---- auto-backup folder button ----
+  // Only shown at all when the File System Access directory picker exists
+  // (Chrome/Edge desktop) -- everywhere else auto-backup just keeps using
+  // downloadsApi or a plain download, exactly as before this feature existed.
+  var autoBackupFolderBtn = document.getElementById("autoBackupFolderBtn");
+  function refreshBackupDirUI(){
+    if (!backupDirSupported) return; // stays hidden (display:none from markup)
+    autoBackupFolderBtn.style.display = "";
+    // The folder choice is itself an auto-backup setting -- someone locking
+    // the interval/on-off toggle to stop accidental changes would rightly
+    // expect this to be covered too, since clicking it can silently switch
+    // (or via right-click, clear) where backups land. Disabling it here is
+    // belt-and-braces alongside the same check inside the click/contextmenu
+    // handlers below.
+    autoBackupFolderBtn.disabled = autoBackupLocked;
+    var has = !!backupDirHandle;
+    autoBackupFolderBtn.classList.toggle("active", has && backupDirPermissionOK);
+    autoBackupFolderBtn.classList.toggle("needs-attn", has && !backupDirPermissionOK);
+    if (!has){
+      autoBackupFolderBtn.title = "Choose a folder to save auto-backups to directly — no download prompts (Chrome/Edge desktop only)";
+    } else if (backupDirPermissionOK){
+      autoBackupFolderBtn.title = "Auto-backup saves straight to “" + backupDirName + "” — click to switch to a different folder, right-click to go back to plain downloads";
+    } else {
+      autoBackupFolderBtn.title = "Auto-backup folder needs to be reconnected — click to resume (or choose a different folder)";
+    }
+  }
+  function chooseBackupDir(){
+    window.showDirectoryPicker({ id: "redline-autobackup", mode: "readwrite" }).then(function(handle){
+      backupDirHandle = handle; backupDirPermissionOK = true; backupDirName = handle.name;
+      refreshBackupDirUI();
+      showToast("Auto-backup will save straight to “" + backupDirName + "”.");
+      // Best-effort persistence so the choice survives a reload -- if this
+      // fails (private browsing, storage quota, etc.) the folder still
+      // works for the rest of THIS session, so a persistence failure here
+      // must never look like the whole thing failed (that's why this isn't
+      // chained into the .catch below).
+      idbSet("backupDirHandle", handle).catch(function(){});
+    }).catch(function(err){
+      if (err && err.name === "AbortError") return; // cancelled -- no-op, keep whatever was set before
+      showToast("Couldn't set that folder.");
+    });
+  }
+  autoBackupFolderBtn.addEventListener("click", function(){
+    if (autoBackupLocked) return; // belt-and-braces; the control is disabled too
+    if (!backupDirSupported) return;
+    if (backupDirHandle && !backupDirPermissionOK){
+      // Folder already chosen but permission lapsed (browser restart, etc.)
+      // -- try to resume the SAME folder first, since that's what most
+      // clicks in this state mean. requestPermission() only works from a
+      // real user gesture like this click, which is exactly why this can't
+      // just be retried silently from the backup timer itself.
+      backupDirHandle.requestPermission({ mode: "readwrite" }).then(function(perm){
+        if (perm === "granted"){
+          backupDirPermissionOK = true;
+          refreshBackupDirUI();
+          showToast("Auto-backup folder reconnected.");
+        } else {
+          chooseBackupDir(); // they'd rather pick a different one
+        }
+      }).catch(function(){ chooseBackupDir(); });
+      return;
+    }
+    chooseBackupDir();
+  });
+  autoBackupFolderBtn.addEventListener("contextmenu", function(e){
+    e.preventDefault();
+    if (autoBackupLocked) return; // clearing the folder is a change too
+    if (!backupDirHandle) return;
+    backupDirHandle = null; backupDirPermissionOK = false; backupDirName = "";
+    refreshBackupDirUI();
+    idbSet("backupDirHandle", null);
+    showToast("Auto-backup folder cleared — backups will download as files instead.");
   });
   // flattened=true tags the name with "_FLATTENED" -- for the PDF/PNG export
   // paths below, which bake every annotation into a flat, non-editable
@@ -2971,7 +3578,7 @@
   // separate PNG button never leaves someone with literally no way to get
   // their annotations out.
   function saveExportedBlob(blob, ext){
-    return downloadsApi.save({ filename: suggestFilename(ext, true), data: blob }).then(function(res){
+    return saveBlobSmart(blob, suggestFilename(ext, true)).then(function(res){
       backupDirty = false; lastBackupAt = Date.now();
       return res;
     });
@@ -2997,10 +3604,26 @@
   // into the PDF as an actual vector path/text object via svg2pdf.js, so it
   // stays perfectly crisp at 100% or zoomed to 1000% — the same reason
   // exporting from CAD software as PDF looks sharper than a screenshot.
-  // 0.75 = CSS/SVG px -> PDF pt at the standard 96dpi assumption, so a
-  // 3000x2000px plan becomes a 2250x1500pt page (nothing is rescaled visually,
-  // it's just a unit conversion).
-  var PX_TO_PT = 0.75;
+  // CSS/SVG px -> PDF pt. This used to assume 96dpi (0.75), treating every
+  // image pixel as exactly "1 CSS px" -- clean in theory, but it means the
+  // PDF's nominal page size comes out physically enormous for any real
+  // photo (a 4000px-wide phone photo becomes a 42-inch-wide page). Nothing
+  // about the embedded pixels themselves gets worse, but that huge nominal
+  // size is exactly what made the text look soft: confirmed by rendering an
+  // exported page back through pdf.js, a plain "1 PDF pt = 1 CSS px" view
+  // only shows 75% of the source photo's native resolution, and a phone
+  // viewer fitting that oversized page to its screen width can fall to
+  // ~30-40% -- the underlying image was never touched, but almost every
+  // viewer's default zoom was silently downsampling it for display, which
+  // reads exactly like "the quality dropped" even though the file itself
+  // didn't lose anything. 300dpi (0.24) is the standard print/document-scan
+  // reference -- it shrinks the nominal page down to a normal document
+  // size (that same 4000px photo becomes ~13in wide) so a viewer's default
+  // "fit to page/screen" view lands at or above 100% of native resolution
+  // instead of a fraction of it. Every dimension line, label and stroke
+  // scales down by the exact same factor (see doc.svg() below), so nothing
+  // shifts relative to the photo -- only the page's physical size shrinks.
+  var PX_TO_PT = 0.24;
   // Checking window.jspdf alone isn't enough: that global is set by the
   // FIRST script tag regardless of whether the SECOND one (svg2pdf.js, from
   // a different CDN host) made it — if it 404s, is blocked by a corporate
@@ -3110,46 +3733,157 @@
       }).catch(function(err){ cleanup(); throw err; });
     });
   }
+  // Waits for the PDF-export libraries (jsPDF + svg2pdf.js) to finish
+  // loading, polling rather than giving up immediately. They're loaded from
+  // CDN script tags in the page head and are USUALLY ready well before
+  // anyone gets around to exporting -- but Save now fires the PDF half
+  // immediately as part of one merged tap (see saveAll() below), instead of
+  // waiting for a separate, later click the way the old standalone Save PDF
+  // button did. That removed the built-in head start these libraries used
+  // to get on a slower phone connection, so hitting Save right after
+  // opening the app can land squarely in the middle of their download.
+  // Resolves true once ready, false once the libraries are confirmed
+  // failed or the timeout elapses -- whichever comes first, so a real
+  // failure doesn't sit through the full wait for nothing.
+  function waitForPdfLibs(timeoutMs){
+    return new Promise(function(resolve){
+      if (pdfLibsReady() || window.__pdfLibFailed){ resolve(pdfLibsReady()); return; }
+      var elapsed = 0, step = 150;
+      var iv = setInterval(function(){
+        elapsed += step;
+        if (pdfLibsReady() || window.__pdfLibFailed || elapsed >= timeoutMs){
+          clearInterval(iv);
+          resolve(pdfLibsReady());
+        }
+      }, step);
+    });
+  }
   function exportPDF(){
     if (!state.imageW){ showToast("Open a plan or photo first."); return; }
-    if (!downloadsApi){ showToast("Saving isn't available in this view yet."); return; }
     // PDF needs two CDN-hosted libraries (jsPDF + svg2pdf.js); on a
     // locked-down network those can fail to load entirely. With only one
     // export button now, that can't be a dead end -- fall back to PNG
     // automatically (no external dependency at all) and say why, instead of
     // just failing with nothing else to try.
     if (window.__pdfLibFailed){ exportPNGFallback("PDF export couldn't load (network/firewall) — "); return; }
-    if (!pdfLibsReady()){ showToast("PDF export is still loading — try again in a second."); return; }
-    showToast("Building PDF…");
-    renderExportPdfBlob().then(function(blob){
-      return saveExportedBlob(blob, "pdf");
-    }).then(function(res){
-      showToast(res.status === "saved" ? "Saved." : "Sent.");
-    }).catch(function(err){
-      if (!err || err.code === "declined") return;
-      if (err.code === "rate_limited"){ showToast("Try again in a moment."); return; }
-      // Surface the real reason in the console for debugging, but the user
-      // just needs their file -- fall back to PNG rather than leave them
-      // with a failure and no alternative.
-      var detail = (err && (err.message || err.code)) ? String(err.message || err.code).slice(0, 140) : "unknown error";
-      console.error("PDF export failed:", err);
-      exportPNGFallback("Couldn't build the PDF (" + detail + ") — ");
+    if (!pdfLibsReady()){
+      // Give them a real few seconds to finish rather than silently
+      // skipping the PDF over a toast that's easy to miss -- this used to
+      // just bail out here with "try again in a second", which from the
+      // merged Save button looked exactly like "Save only saves the
+      // project file" (the PDF quietly never happened at all).
+      showToast("Preparing PDF export…");
+      waitForPdfLibs(8000).then(function(ready){
+        if (window.__pdfLibFailed){ exportPNGFallback("PDF export couldn't load (network/firewall) — "); return; }
+        if (!ready){ showToast("PDF export is still loading — try Save again in a moment."); return; }
+        exportPDFNow();
+      });
+      return;
+    }
+    exportPDFNow();
+  }
+  function exportPDFNow(){
+    var filename = suggestFilename("pdf", true);
+    // Ask where to save BEFORE building the PDF -- see requestSaveTarget()
+    // above for why building it first would often silently lose the
+    // folder picker on anything but a small file.
+    requestSaveTarget("application/pdf", filename).then(function(target){
+      if (target.kind === "declined") return;
+      showToast("Building PDF…");
+      return renderExportPdfBlob().then(function(blob){
+        return writeToSaveTarget(target, blob, filename).then(function(res){
+          backupDirty = false; lastBackupAt = Date.now();
+          return res;
+        });
+      }).then(function(res){
+        showToast(res.status === "saved" ? "Saved." : "Sent.");
+      }).catch(function(err){
+        if (!err || err.code === "declined") return;
+        if (err.code === "rate_limited"){ showToast("Try again in a moment."); return; }
+        // Surface the real reason in the console for debugging, but the
+        // user just needs their file -- fall back to PNG rather than leave
+        // them with a failure and no alternative. (This re-asks where to
+        // save, since the PDF handle picked above was never written to.)
+        var detail = (err && (err.message || err.code)) ? String(err.message || err.code).slice(0, 140) : "unknown error";
+        console.error("PDF export failed:", err);
+        exportPNGFallback("Couldn't build the PDF (" + detail + ") — ");
+      });
     });
   }
+
+  // ---- Share: hands the finished plan straight to the device's own share
+  // sheet (Messages, WhatsApp, email, Drive, whatever's installed) instead
+  // of a save-then-go-find-it-and-attach round trip. Only where the Web
+  // Share API (with file support) actually exists -- Android Chrome/TWA and
+  // some desktop browsers; Firefox and others simply never show the button.
+  // Shares the same flattened PDF Save produces (real vector text/lines,
+  // sharp at any zoom) so there's exactly one "send this to someone" file
+  // shape across the app, falling back to a flattened PNG in the same
+  // situations Save's own PDF half already falls back for. ----
+  function isShareSupported(){
+    return typeof navigator.share === "function";
+  }
+  function shareFile(file){
+    var shareData = { files: [file] };
+    if (navigator.canShare && !navigator.canShare(shareData)){
+      showToast("Sharing files isn't supported here — use Save instead.");
+      return;
+    }
+    navigator.share(shareData).catch(function(err){
+      // AbortError just means the person closed the share sheet without
+      // picking anything -- they cancelled on purpose, not a failure.
+      if (err && err.name === "AbortError") return;
+      showToast("Couldn't open the share screen — try again, or use Save instead.");
+    });
+  }
+  function shareAsPngFallback(reasonPrefix){
+    renderExportBlob().then(function(blob){
+      shareFile(new File([blob], suggestFilename("png", true), { type: "image/png" }));
+    }).catch(function(){
+      showToast(reasonPrefix + "couldn't prepare a file to share.");
+    });
+  }
+  function shareCurrentPlanNow(){
+    renderExportPdfBlob().then(function(blob){
+      shareFile(new File([blob], suggestFilename("pdf", true), { type: "application/pdf" }));
+    }).catch(function(err){
+      console.error("Share (PDF) failed:", err);
+      shareAsPngFallback("Couldn't build the PDF — ");
+    });
+  }
+  function shareCurrentPlan(){
+    if (!state.imageW){ showToast("Open a plan or photo first."); return; }
+    if (window.__pdfLibFailed){ shareAsPngFallback("PDF export couldn't load (network/firewall) — "); return; }
+    if (!pdfLibsReady()){
+      showToast("Preparing to share…");
+      waitForPdfLibs(8000).then(function(ready){
+        if (window.__pdfLibFailed){ shareAsPngFallback("PDF export couldn't load (network/firewall) — "); return; }
+        if (!ready){ showToast("Still loading — try Share again in a moment."); return; }
+        shareCurrentPlanNow();
+      });
+      return;
+    }
+    shareCurrentPlanNow();
+  }
+  var shareBtn = document.getElementById("shareBtn");
+  if (isShareSupported()){
+    shareBtn.style.display = "";
+  }
+  shareBtn.addEventListener("click", shareCurrentPlan);
 
   /* ============================== resize ============================== */
   window.addEventListener("resize", function(){ applyView(); });
 
   /* ============================== boot ============================== */
   // Shared by the IndexedDB autosave restore (boot, below) AND by opening a
-  // saved .redline.json project file explicitly (see "Save/Open project"
+  // saved .utzline.json project file explicitly (see "Save/Open project"
   // further down) -- both hand this the exact same shape:
   // {imageDataURL, imageW, imageH, fileBase, objects, style}. Keeping the
   // migration logic in one place means a project file saved years from now
   // gets exactly the same one-time field cleanup an autosave restore would.
   function applyRestoredState(saved){
     state.imageDataURL = saved.imageDataURL; state.imageW = saved.imageW; state.imageH = saved.imageH;
-    state.fileBase = saved.fileBase || "plan"; state.objects = saved.objects || [];
+    state.fileBase = sanitizeFileBase(saved.fileBase || "plan"); state.objects = saved.objects || [];
     if (saved.style) state.style = saved.style;
     // migrate objects saved before each delimiter arm got its own
     // adjustable length (cap1a/cap1b/cap2a/cap2b) — also drops leftover
@@ -3172,31 +3906,39 @@
     state.selectedId = null;
     applyImageToDom();
     history = [deepClone(state.objects)]; historyIndex = 0;
+    updateFileNameBtn();
   }
 
   /* ============================== save / open project ==============================
      Distinct from Save PDF (a flattened, non-editable picture): a project
      file is the same shape the IndexedDB autosave already uses, just written
-     out as a plain .redline.json file instead of tucked away in this
+     out as a plain .utzline.json file instead of tucked away in this
      browser's storage -- so it survives a cleared browser, moves between
      machines, and (since it's an ordinary named file) supports working on
      several separate plans side by side, each with its own save. Reopening
      one keeps every object fully editable -- nothing is flattened. */
   function projectPayload(){
     return {
-      redlineProject: 1,
+      // Renamed from the app's old name (was "Redline") -- only the NEW
+      // marker is ever written now, but openProjectFile() below still
+      // accepts the old one too, so nobody's already-saved project files
+      // become unopenable just because the app was renamed.
+      utzlineProject: 1,
       imageDataURL: state.imageDataURL, imageW: state.imageW, imageH: state.imageH,
       fileBase: state.fileBase, objects: state.objects, style: defaultStyle()
     };
   }
   function saveProject(){
     if (!state.imageW){ showToast("Open a plan or photo first."); return; }
-    if (!downloadsApi){ showToast("Saving isn't available in this view yet."); return; }
     var blob;
     try{
       blob = new Blob([JSON.stringify(projectPayload())], { type: "application/json" });
     }catch(e){ showToast("Couldn't put together the project file."); return; }
-    downloadsApi.save({ filename: suggestFilename("redline.json"), data: blob }).then(function(res){
+    // Returning this chain lets saveAll() (see below) wait for the project
+    // file to actually finish before starting the PDF -- so the two don't
+    // race over the same toast, and each result is visible in turn rather
+    // than whichever happens to resolve last silently winning.
+    return saveBlobSmart(blob, suggestFilename("utzline.json")).then(function(res){
       showToast(res.status === "saved" ? "Project saved — Open project to keep working on it later." : "Sent.");
     }).catch(function(err){
       if (!err || err.code === "declined") return;
@@ -3209,8 +3951,11 @@
     reader.onload = function(){
       var saved;
       try{ saved = JSON.parse(String(reader.result)); }catch(e){ saved = null; }
-      if (!saved || !saved.redlineProject || !saved.imageDataURL){
-        showToast("That doesn't look like a Redline project file.");
+      // Accept files saved under either marker: the current one, and the
+      // old one from before the app was renamed (was "Redline") -- so a
+      // project someone saved months ago still opens today.
+      if (!saved || !(saved.utzlineProject || saved.redlineProject) || !saved.imageDataURL){
+        showToast("That doesn't look like a UTZLINE Site Measure project file.");
         return;
       }
       applyRestoredState(saved);
@@ -3223,13 +3968,29 @@
     reader.onerror = function(){ showToast("Could not read that file."); };
     reader.readAsText(file);
   }
-  document.getElementById("saveProjectBtn").addEventListener("click", saveProject);
+  // Save PDF and Save project used to be two separate buttons/taps. What
+  // people actually want once they're done marking up a plan is both files
+  // -- the flattened PDF to send off, the project file to keep editing --
+  // not a choice between them, so one "Save" button now fires both from a
+  // single tap. Each half keeps its own already-tested behavior completely
+  // unchanged (picker vs. plain-download fallback, the PNG fallback if the
+  // PDF libraries didn't load, the 0-byte-write safety net) -- this just
+  // triggers both instead of requiring two separate clicks to get both
+  // files out of a finished plan.
+  function saveAll(){
+    // Sequenced, not fired in parallel: the project file is tiny and
+    // finishes almost instantly, so letting its own toast land first (then
+    // the PDF's "Building PDF…"/"Saved." messages take over) reads as two
+    // clear steps of one Save action instead of two toasts racing to
+    // overwrite each other. Promise.resolve(...) tolerates saveProject()
+    // returning nothing (its own early-out guards, e.g. no plan loaded).
+    Promise.resolve(saveProject()).then(function(){ exportPDF(); });
+  }
+  document.getElementById("saveBtn").addEventListener("click", saveAll);
   var openProjectInput = document.getElementById("openProjectInput");
   document.getElementById("openProjectBtn").addEventListener("click", function(){
     if (!state.objects.length){ openProjectInput.click(); return; }
-    showConfirm("Open a project file? This replaces the current plan and its " + state.objects.length + " annotation(s) (make sure you've saved it first if you want to keep it).").then(function(ok){
-      if (ok) openProjectInput.click();
-    });
+    showConfirmSync("Open a project file? This replaces the current plan and its " + state.objects.length + " annotation(s) (make sure you've saved it first if you want to keep it).", function(){ openProjectInput.click(); });
   });
   openProjectInput.addEventListener("change", function(){
     var f = openProjectInput.files && openProjectInput.files[0];
@@ -3240,6 +4001,21 @@
   function boot(){
     if (window.claude && window.claude.use){
       window.claude.use("downloads").then(function(d){ downloadsApi = d; }).catch(function(){});
+    }
+    refreshBackupDirUI();
+    if (backupDirSupported){
+      idbGet("backupDirHandle").then(function(handle){
+        if (!handle) return;
+        backupDirHandle = handle; backupDirName = handle.name;
+        return handle.queryPermission({ mode: "readwrite" }).then(function(perm){
+          backupDirPermissionOK = perm === "granted";
+        });
+      }).catch(function(){
+        // Handle is unusable (folder moved/deleted, revoked, or just not the
+        // shape we expect) -- fall back to "no folder chosen" rather than
+        // getting stuck in a broken state.
+        backupDirHandle = null; backupDirPermissionOK = false; backupDirName = "";
+      }).then(refreshBackupDirUI);
     }
     idbGet("current").then(function(saved){
       if (saved && saved.imageDataURL){
@@ -3266,11 +4042,13 @@
 })();
 </script>
 
+
+
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", function () {
     navigator.serviceWorker.register("./service-worker.js").catch(function (err) {
-      console.warn("Redline: service worker registration failed", err);
+      console.warn("UTZLINE Site Measure: service worker registration failed", err);
     });
   });
 }

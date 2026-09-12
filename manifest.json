@@ -1,6 +1,6 @@
 {
-  "name": "Redline",
-  "short_name": "Redline",
+  "name": "UTZLINE Site Measure",
+  "short_name": "UTZLINE",
   "description": "Annotate plans and site photos: dimensions, callouts, notes, and markups.",
   "start_url": "./index.html",
   "scope": "./",
