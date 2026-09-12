@@ -34,7 +34,17 @@
 // in a single tap -- each half keeps its existing verified-write/fallback
 // behavior unchanged, just triggered together instead of two separate
 // taps.)
-var CACHE_NAME = "redline-cache-v8";
+// (v9: two real bugs found on the phone app after v8 shipped --
+// (1) the merged Save button could silently skip the PDF half entirely if
+// the PDF libraries (loaded from CDN) hadn't finished loading yet at the
+// moment of the tap, which got more likely once Save fires immediately
+// instead of waiting for a separate later click -- it now waits a few
+// seconds for them before giving up; (2) auto-backup required either the
+// claude.ai downloads bridge or a chosen folder (desktop-only) to do
+// ANYTHING, so it was a complete silent no-op on every mobile browser
+// despite the toggle looking like a working feature -- it now falls back
+// to a plain download of both files, same as Save's own fallback.)
+var CACHE_NAME = "redline-cache-v9";
 
 var PRECACHE_URLS = [
   "./",

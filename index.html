@@ -977,7 +977,15 @@
   function maybeAutoBackup(){
     var canDownloadsApi = !!downloadsApi;
     var canFolder = backupDirSupported && backupDirHandle && backupDirPermissionOK;
-    if (!autoBackupOn || !backupDirty || !state.imageW || !(canDownloadsApi || canFolder)) return;
+    // NOTE: this used to also require (canDownloadsApi || canFolder) here
+    // and just quietly do nothing at all otherwise -- which meant
+    // auto-backup was a complete no-op, with no warning of any kind, on
+    // every mobile browser (no File System Access API, so canFolder is
+    // always false there) and every non-claude.ai context without a chosen
+    // folder. The checkbox/interval controls looked and behaved like a
+    // working feature the whole time. See the plain-download fallback
+    // below, which now covers exactly that gap.
+    if (!autoBackupOn || !backupDirty || !state.imageW) return;
     if (Date.now() - lastBackupAt < autoBackupIntervalMin * 60 * 1000) return;
     backupDirty = false;
     lastBackupAt = Date.now();
@@ -991,33 +999,60 @@
       });
       return;
     }
-    // Folder path: write BOTH a flattened PNG (a quick visual reference)
-    // AND the actual editable project file -- the real safety net here,
-    // since reopening it with Open project means picking up exactly where
-    // you left off, not re-tracing every annotation from a picture. Both
-    // writes are independently verified (see writeBlobToBackupDir /
-    // verifiedHandleWrite); if either one fails, the whole backup counts
-    // as not done and retries next tick -- a PNG with no matching
-    // reopenable project (or vice versa) isn't a real backup.
-    var jsonBlob;
+    if (canFolder){
+      // Folder path: write BOTH a flattened PNG (a quick visual reference)
+      // AND the actual editable project file -- the real safety net here,
+      // since reopening it with Open project means picking up exactly
+      // where you left off, not re-tracing every annotation from a
+      // picture. Both writes are independently verified (see
+      // writeBlobToBackupDir / verifiedHandleWrite); if either one fails,
+      // the whole backup counts as not done and retries next tick -- a PNG
+      // with no matching reopenable project (or vice versa) isn't a real
+      // backup.
+      var jsonBlob;
+      try{
+        jsonBlob = new Blob([JSON.stringify(projectPayload())], { type: "application/json" });
+      }catch(e){
+        backupDirty = true;
+        return;
+      }
+      renderExportBlob().then(function(pngBlob){
+        return writeBlobToBackupDir(pngBlob, autoBackupFilename());
+      }).then(function(){
+        return writeBlobToBackupDir(jsonBlob, autoBackupProjectFilename());
+      }).then(function(){
+        showToast("Backed up.");
+      }).catch(function(err){
+        backupDirty = true; // retry on the next tick
+        if (err && err.code === "permission_lost"){
+          backupDirPermissionOK = false;
+          refreshBackupDirUI();
+        }
+      });
+      return;
+    }
+    // Neither the claude.ai downloads capability nor a chosen backup folder
+    // is available -- true on every mobile browser and any desktop browser
+    // without the File System Access API (Firefox, Safari). Fall back to a
+    // plain download of both files, exactly like Save (project + PDF)
+    // already does when neither of those is available, rather than
+    // treating "no fancy save target" as "do nothing at all". There's no
+    // write-back to verify here (a plain download can't be read back the
+    // way a folder handle can), so this path just trusts the browser the
+    // same way a manual Save's own plain-download fallback already does.
+    var jsonBlob2;
     try{
-      jsonBlob = new Blob([JSON.stringify(projectPayload())], { type: "application/json" });
+      jsonBlob2 = new Blob([JSON.stringify(projectPayload())], { type: "application/json" });
     }catch(e){
       backupDirty = true;
       return;
     }
     renderExportBlob().then(function(pngBlob){
-      return writeBlobToBackupDir(pngBlob, autoBackupFilename());
-    }).then(function(){
-      return writeBlobToBackupDir(jsonBlob, autoBackupProjectFilename());
-    }).then(function(){
+      browserDownloadBlob(pngBlob, autoBackupFilename());
+      browserDownloadBlob(jsonBlob2, autoBackupProjectFilename());
       showToast("Backed up.");
-    }).catch(function(err){
+    }).catch(function(){
       backupDirty = true; // retry on the next tick
-      if (err && err.code === "permission_lost"){
-        backupDirPermissionOK = false;
-        refreshBackupDirUI();
-      }
     });
   }
   setInterval(maybeAutoBackup, 30 * 1000);
@@ -3484,6 +3519,31 @@
       }).catch(function(err){ cleanup(); throw err; });
     });
   }
+  // Waits for the PDF-export libraries (jsPDF + svg2pdf.js) to finish
+  // loading, polling rather than giving up immediately. They're loaded from
+  // CDN script tags in the page head and are USUALLY ready well before
+  // anyone gets around to exporting -- but Save now fires the PDF half
+  // immediately as part of one merged tap (see saveAll() below), instead of
+  // waiting for a separate, later click the way the old standalone Save PDF
+  // button did. That removed the built-in head start these libraries used
+  // to get on a slower phone connection, so hitting Save right after
+  // opening the app can land squarely in the middle of their download.
+  // Resolves true once ready, false once the libraries are confirmed
+  // failed or the timeout elapses -- whichever comes first, so a real
+  // failure doesn't sit through the full wait for nothing.
+  function waitForPdfLibs(timeoutMs){
+    return new Promise(function(resolve){
+      if (pdfLibsReady() || window.__pdfLibFailed){ resolve(pdfLibsReady()); return; }
+      var elapsed = 0, step = 150;
+      var iv = setInterval(function(){
+        elapsed += step;
+        if (pdfLibsReady() || window.__pdfLibFailed || elapsed >= timeoutMs){
+          clearInterval(iv);
+          resolve(pdfLibsReady());
+        }
+      }, step);
+    });
+  }
   function exportPDF(){
     if (!state.imageW){ showToast("Open a plan or photo first."); return; }
     // PDF needs two CDN-hosted libraries (jsPDF + svg2pdf.js); on a
@@ -3492,7 +3552,23 @@
     // automatically (no external dependency at all) and say why, instead of
     // just failing with nothing else to try.
     if (window.__pdfLibFailed){ exportPNGFallback("PDF export couldn't load (network/firewall) — "); return; }
-    if (!pdfLibsReady()){ showToast("PDF export is still loading — try again in a second."); return; }
+    if (!pdfLibsReady()){
+      // Give them a real few seconds to finish rather than silently
+      // skipping the PDF over a toast that's easy to miss -- this used to
+      // just bail out here with "try again in a second", which from the
+      // merged Save button looked exactly like "Save only saves the
+      // project file" (the PDF quietly never happened at all).
+      showToast("Preparing PDF export…");
+      waitForPdfLibs(8000).then(function(ready){
+        if (window.__pdfLibFailed){ exportPNGFallback("PDF export couldn't load (network/firewall) — "); return; }
+        if (!ready){ showToast("PDF export is still loading — try Save again in a moment."); return; }
+        exportPDFNow();
+      });
+      return;
+    }
+    exportPDFNow();
+  }
+  function exportPDFNow(){
     var filename = suggestFilename("pdf", true);
     // Ask where to save BEFORE building the PDF -- see requestSaveTarget()
     // above for why building it first would often silently lose the
