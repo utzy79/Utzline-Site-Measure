@@ -738,7 +738,7 @@
   // change, at the same time as service-worker.js's CACHE_NAME and the
   // delivered zip's filename, so all three always agree on the same number
   // instead of drifting out of sync with each other.
-  var APP_VERSION = "v24";
+  var APP_VERSION = "v25";
   var SVG_NS = "http://www.w3.org/2000/svg";
   // Embedded copies (base64 woff2, weight 500 -- the only weight the app
   // ever measures or draws text with) of the two custom Google Fonts used
@@ -2107,22 +2107,38 @@
       }
       var hitO = hitObject(wp);
       if (hitO){
+        var panelWasOpen = panel.style.display !== "none";
         state.selectedId = hitO.id;
         bringSelectedToFront();
         renderAll();
         // Selecting something new can open the phone-docked properties
-        // panel, which pushes the canvas down and changes svgRoot's
+        // panel, which pushes the canvas down and shrinks svgRoot's
         // on-screen rect right in the middle of this same tap-to-select
-        // gesture. If the drag anchor below still used "wp" (computed a
-        // moment earlier, against the OLD rect), the very next pointermove
-        // -- which recomputes world coordinates against the NEW, shifted
-        // rect -- would see a big spurious jump purely from that reflow,
-        // with the same finger position now mapping to a different world
-        // point, yanking the object that was just selected. Re-deriving
-        // the anchor from the same screen point AFTER the panel has had
-        // its chance to open keeps it consistent with whatever rect every
-        // subsequent pointermove will use, so a plain tap (or a real drag
-        // that starts right after) never mistakes that reflow for a drag.
+        // gesture -- the object you just tapped can visibly jump (the
+        // canvas moved under it) and end up sitting behind the panel or
+        // out of the smaller leftover view entirely, forcing a hunt to find
+        // it again (during which a stray tap on empty canvas would deselect
+        // it). Recentering the view on it -- panning only, never zooming --
+        // the moment the panel finishes opening puts it back in the middle
+        // of whatever room is actually left, so there's nothing to hunt for.
+        // Only fires for a FRESH open (the panel was hidden a moment ago,
+        // at phone width where it's docked in-flow); reselecting a
+        // different object while the panel's already showing doesn't
+        // reflow anything, so nothing needs recentering there.
+        if (!panelWasOpen && panel.style.display !== "none" && getComputedStyle(panel).position === "static"){
+          var selB = objectBounds(hitO);
+          recenterViewOn((selB.x0 + selB.x1) / 2, (selB.y0 + selB.y1) / 2);
+        }
+        // If the drag anchor below still used "wp" (computed a moment
+        // earlier, against the OLD rect/view), the very next pointermove --
+        // which recomputes world coordinates against the NEW rect/view --
+        // would see a big spurious jump purely from that reflow (and now,
+        // the recenter above too), with the same finger position now
+        // mapping to a different world point. Re-deriving the anchor from
+        // the same screen point AFTER both have had their chance to run
+        // keeps it consistent with whatever every subsequent pointermove
+        // will use, so a plain tap (or a real drag right after) never
+        // mistakes either change for an actual drag.
         var dragWp = screenToWorld(startClient.x, startClient.y);
         dragMode = { kind: "move", id: hitO.id, start: deepClone(hitO), startWorld: dragWp };
         return;
@@ -2527,6 +2543,20 @@
     state.view.scale = s;
     state.view.tx = r.width / 2 - (x0 + w / 2) * s;
     state.view.ty = r.height / 2 - (y0 + h / 2) * s;
+    applyView();
+  }
+  // Pans (never zooms) so a given world point lands in the middle of
+  // svgRoot's CURRENT on-screen rect. Used right after selecting something
+  // opens the phone-docked properties panel: that docking pushes the canvas
+  // down and shrinks it, and without this the object you just tapped could
+  // end up sitting behind the panel or scrolled out of the smaller leftover
+  // area, forcing you to go hunt for it (and risk deselecting it in the
+  // process). Recentering it into whatever room is actually left avoids
+  // that hunt entirely instead of just avoiding a second, compounding bug.
+  function recenterViewOn(wx, wy){
+    var r = svgRoot.getBoundingClientRect();
+    state.view.tx = r.width / 2 - wx * state.view.scale;
+    state.view.ty = r.height / 2 - wy * state.view.scale;
     applyView();
   }
   function finalizeDrawing(){

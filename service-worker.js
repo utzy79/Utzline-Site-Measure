@@ -178,7 +178,20 @@
 // via the "?" button) so it's possible to confirm which build is actually
 // running on any device without needing dev tools -- keep this number, the
 // zip's filename, and this file's own CACHE_NAME all matching from now on.)
-var CACHE_NAME = "redline-cache-v24";
+// (v25: v24's fix stopped the just-selected object's DATA from jumping
+// during a drag, but on the phone, opening the docked properties panel
+// still visibly shifted the object on screen even with no drag at all --
+// the canvas itself moves down to make room for the panel, so whatever you
+// just tapped could end up sitting behind the panel or scrolled out of the
+// smaller leftover view, forcing a hunt to find it again (and a stray tap
+// while hunting would deselect it). Selecting something for the first time
+// now recenters the view on it -- panning only, never zooming -- into
+// whatever room is actually left under the panel, so there's nothing to
+// hunt for. Reselecting a different object while the panel's already open,
+// and any selection on tablet/desktop (where the panel floats and never
+// pushes the canvas around), are unaffected -- nothing reflows there, so
+// nothing needs recentering.)
+var CACHE_NAME = "redline-cache-v25";
 
 var PRECACHE_URLS = [
   "./",
