@@ -779,7 +779,7 @@
   // change, at the same time as service-worker.js's CACHE_NAME and the
   // delivered zip's filename, so all three always agree on the same number
   // instead of drifting out of sync with each other.
-  var APP_VERSION = "v28";
+  var APP_VERSION = "v29";
   var SVG_NS = "http://www.w3.org/2000/svg";
   // Embedded copies (base64 woff2, weight 500 -- the only weight the app
   // ever measures or draws text with) of the two custom Google Fonts used
@@ -1054,6 +1054,84 @@
     apply(currentTheme());
     btn.addEventListener("click", function(){
       apply(ORDER[(ORDER.indexOf(currentTheme()) + 1) % ORDER.length]);
+    });
+  })();
+  // "Check for updates" button -- only ever does anything on the installed/
+  // self-hosted PWA build (build.py is the only thing that ever registers
+  // a service worker; the claude.ai Artifact has none, so getRegistration()
+  // resolves to nothing there and the button just stays hidden, same as it
+  // starts out in the HTML). This exists because update-propagation kept
+  // being the actual problem this session, not the app itself -- GitHub
+  // Pages serving a stale index.html/service-worker.js after a real fix had
+  // already shipped, and the Windows app not noticing a new version was out
+  // until the service worker was unregistered by hand in DevTools. A real
+  // "check now" control fixes that in-app instead of walking through that
+  // by-hand recovery every time.
+  (function setupUpdateCheck(){
+    var btn = document.getElementById("checkUpdateBtn");
+    if (!btn || !("serviceWorker" in navigator)) return;
+
+    var reg = null;
+    var checking = false;
+    // Set only once an update() call actually turns up a new installing
+    // worker -- so an unrelated/unexpected controllerchange (there
+    // shouldn't be one, but this guards against ever reloading in a loop)
+    // can't bounce the page.
+    var awaitingReload = false;
+    var refreshed = false;
+
+    // .ready (rather than getRegistration()) deliberately waits for an
+    // active service worker rather than just an in-progress one -- this
+    // script runs at boot(), before the PWA's own registration call (which
+    // only fires on the window "load" event further down the page), so
+    // getRegistration() here would often still find nothing yet and leave
+    // the button wrongly stuck hidden. On the claude.ai Artifact, which
+    // never registers a service worker at all, this promise simply never
+    // resolves -- harmless, since the button is meant to stay hidden there
+    // forever anyway.
+    navigator.serviceWorker.ready.then(function(r){
+      reg = r; btn.style.display = "";
+    }).catch(function(){});
+
+    // service-worker.js already calls self.skipWaiting() on install and
+    // self.clients.claim() on activate, so a newly-found update takes over
+    // this page on its own -- no postMessage handshake needed here, just
+    // reload once that handover actually happens so the new code is what's
+    // actually running (installing the new worker alone doesn't swap out
+    // the JS already loaded into this tab).
+    navigator.serviceWorker.addEventListener("controllerchange", function(){
+      if (refreshed || !awaitingReload) return;
+      refreshed = true;
+      window.location.reload();
+    });
+
+    btn.addEventListener("click", function(){
+      if (!reg || checking) return;
+      checking = true;
+      showToast("Checking for updates…");
+      reg.update().then(function(){
+        var newWorker = reg.installing;
+        if (!newWorker){
+          checking = false;
+          showToast("You're already on the latest version (" + APP_VERSION + ").");
+          return;
+        }
+        awaitingReload = true;
+        showToast("Update found — installing…");
+        newWorker.addEventListener("statechange", function(){
+          if (newWorker.state === "installed" || newWorker.state === "activated"){
+            checking = false;
+          } else if (newWorker.state === "redundant"){
+            // Install failed partway (e.g. a precache file 404'd) -- don't
+            // leave things waiting on a reload that's never coming.
+            checking = false; awaitingReload = false;
+            showToast("Couldn't finish the update — try again in a moment.");
+          }
+        });
+      }).catch(function(){
+        checking = false;
+        showToast("Couldn't check for updates — check your connection.");
+      });
     });
   })();
   var zoomLabel = document.getElementById("zoomLabel");

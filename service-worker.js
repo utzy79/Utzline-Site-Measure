@@ -219,7 +219,18 @@
 // enabled Windows laptop/monitor, not just phones -- instead of waiting for
 // each one to get reported individually. Mouse/trackpad sizing is
 // unchanged.)
-var CACHE_NAME = "redline-cache-v28";
+// (v29: added a real "check for updates" button (installed/self-hosted
+// build only -- there's no service worker at all on the claude.ai
+// Artifact, so it stays hidden there) instead of always needing to
+// diagnose update-propagation issues by hand -- GitHub Pages serving a
+// stale index.html/service-worker.js, or the Windows app not noticing a
+// new version was out until the service worker got unregistered manually
+// in DevTools. Tapping it calls the browser's real update check; if
+// there's nothing new it says so ("already on the latest version"), and
+// if there is, the new worker installs, takes over, and the page reloads
+// itself onto it automatically -- no more waiting for the next natural
+// reload or manually clearing storage.)
+var CACHE_NAME = "redline-cache-v29";
 
 var PRECACHE_URLS = [
   "./",
