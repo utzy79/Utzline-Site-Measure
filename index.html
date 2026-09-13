@@ -456,11 +456,44 @@
        their parent's display mode. Unchanged at tablet/desktop widths. */
     .stage{ display:flex; flex-direction:column; }
     svg#svgRoot{ flex:1 1 auto; min-height:0; height:auto; }
+    /* One scrolling row instead of a tall stacked block -- Color, Weight,
+       Ends, Show-at, Text size and the Hide/Delete/Edit actions used to sit
+       one above the other (up to 38vh of stacked rows), which ate a big,
+       unpredictable chunk of the canvas every time something got selected.
+       Laid out side by side in a single row that scrolls sideways instead
+       -- same idea as the toolbar rows just above -- it's always one short,
+       fixed-height strip no matter which controls the current object needs,
+       and there's less canvas to reclaim/recenter around in the first
+       place. Each .panel-row becomes a compact, non-stretching group
+       instead of stretching edge-to-edge with its label and control
+       pushed apart. */
     .panel{
       position:static; order:-1; flex:none; width:100%;
-      max-height:38vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+      flex-direction:row; align-items:center; gap:16px;
+      padding:8px 12px;
+      overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
+      scrollbar-width:none;
+      max-height:none; height:auto;
       border-radius:0; border-width:0 0 1px;
     }
+    .panel::-webkit-scrollbar{display:none;}
+    .panel-row{
+      flex:none; justify-content:flex-start; gap:8px; white-space:nowrap;
+    }
+    .panel-actions{flex:none; margin-top:0;}
+    /* Bigger touch targets throughout the panel specifically -- the 20px
+       swatches/stepper buttons and 13px checkboxes were sized for a mouse
+       cursor's precision and were genuinely too small and close together
+       for a fingertip, causing mis-taps on the wrong swatch/button. */
+    .swatches{gap:9px; max-width:none; flex-wrap:nowrap;}
+    .swatch{width:34px; height:34px; border-width:3px;}
+    .stepper{gap:6px;}
+    .stepper button{width:34px; height:34px; font-size:16px;}
+    .stepper span{min-width:30px; font-size:13px;}
+    select.mini{font-size:13px; padding:8px 10px; height:34px;}
+    .end-toggles{gap:14px;}
+    .end-toggle{font-size:12.5px; gap:6px;}
+    .end-toggle input{width:20px; height:20px;}
     .status{font-size:10px;}
     .layers-panel{width:min(240px, calc(100vw - 16px)); right:8px; top:8px; max-height:60vh;}
 
@@ -578,6 +611,14 @@
       <!-- Icon + title/aria-label are set by setupThemeToggle() on load,
            since they depend on the current mode (system/light/dark). -->
       <button class="ibtn" id="themeToggleBtn" title="Appearance" aria-label="Appearance"></button>
+      <!-- Only shown on the installed/self-hosted build, which is the only
+           one that ever has a real service worker to check -- see
+           setupUpdateCheck() below. Hidden by default so it never appears
+           (or does nothing when tapped) on the claude.ai Artifact, which
+           has no service worker at all. -->
+      <button class="ibtn" id="checkUpdateBtn" title="Check for an app update" aria-label="Check for an app update" style="display:none;">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 10a6.5 6.5 0 1 1-1.8-4.5"/><path d="M16.7 2.8v3.4h-3.4"/></svg>
+      </button>
     </div>
     </div><!-- /toolbarRow1 -->
 
@@ -738,7 +779,7 @@
   // change, at the same time as service-worker.js's CACHE_NAME and the
   // delivered zip's filename, so all three always agree on the same number
   // instead of drifting out of sync with each other.
-  var APP_VERSION = "v25";
+  var APP_VERSION = "v28";
   var SVG_NS = "http://www.w3.org/2000/svg";
   // Embedded copies (base64 woff2, weight 500 -- the only weight the app
   // ever measures or draws text with) of the two custom Google Fonts used
@@ -1886,7 +1927,30 @@
   }
 
   /* ============================== handles ============================== */
-  function hr(){ return 7 / state.view.scale; }
+  // These SVG-drawn handles (resize corners, the label rotate/resize grips,
+  // the invisible tap-tolerance around a thin line/dimension) live inside
+  // the zoomed "world" group, so they're already sized in WORLD units
+  // divided by scale to come out a CONSTANT size on screen no matter the
+  // zoom level -- that part was already right. What wasn't: that constant
+  // was tuned for a mouse pointer's precision (7px handles, 9px tap
+  // tolerance) and was genuinely too small and close together for a
+  // fingertip on a touchscreen, same class of bug as the properties
+  // panel's old 20px swatches. coarsePointer() is the standards-based
+  // signal for "the primary input here is imprecise" (any touchscreen --
+  // phone, tablet, or a touch-enabled Windows laptop/monitor -- not just
+  // phones the way isLikelyMobileDevice() checks for elsewhere), so this
+  // enlarges every one of these targets together wherever that's true,
+  // instead of only reacting to each one as it gets reported.
+  function coarsePointer(){
+    try{ return !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); }
+    catch(e){ return isLikelyMobileDevice(); }
+  }
+  function hr(){ return (coarsePointer() ? 12 : 7) / state.view.scale; }
+  // How far the label rotate-grip floats above the label, vs the resize
+  // grip sitting right at its corner -- widened to match on a coarse
+  // pointer too, so the two enlarged handles stay clearly apart instead of
+  // crowding each other now that both are bigger.
+  function rotateHandleOffset(){ return (coarsePointer() ? 34 : 26) / state.view.scale; }
   function renderHandles(){
     handlesLayer.innerHTML = "";
     if (state.tool !== "select" || !state.selectedId) return;
@@ -1931,7 +1995,7 @@
     var w = textWidth(label.text, label.fontSize, label.family), h = textHeight(label.text, label.fontSize);
     var hw = w / 2, hh = h / 2;
     var corner = rotatePoint(label.x + hw, label.y + hh, label.x, label.y, label.rot);
-    var rotAnchor = rotatePoint(label.x, label.y - hh - 26 / state.view.scale, label.x, label.y, label.rot);
+    var rotAnchor = rotatePoint(label.x, label.y - hh - rotateHandleOffset(), label.x, label.y, label.rot);
     var box = [
       rotatePoint(label.x - hw, label.y - hh, label.x, label.y, label.rot),
       rotatePoint(label.x + hw, label.y - hh, label.x, label.y, label.rot),
@@ -1989,7 +2053,7 @@
     var R = hr() * 1.6;
     var w = textWidth(label.text, label.fontSize, label.family), h = textHeight(label.text, label.fontSize);
     var hw = w / 2, hh = h / 2;
-    var rotAnchor = rotatePoint(label.x, label.y - hh - 26 / state.view.scale, label.x, label.y, label.rot);
+    var rotAnchor = rotatePoint(label.x, label.y - hh - rotateHandleOffset(), label.x, label.y, label.rot);
     if (Math.hypot(worldPt.x - rotAnchor.x, worldPt.y - rotAnchor.y) <= R) return "rotate";
     var corner = rotatePoint(label.x + hw, label.y + hh, label.x, label.y, label.rot);
     if (Math.hypot(worldPt.x - corner.x, worldPt.y - corner.y) <= R) return "resize";
@@ -2003,7 +2067,12 @@
   // context menu is the one place that needs to find a locked object
   // anyway (to offer Unlock), so it passes includeLocked=true.
   function hitObject(worldPt, includeLocked){
-    var tol = 9 / state.view.scale;
+    // Same reasoning as hr() above: how close a tap needs to land to a
+    // thin line/dimension/callout leader to actually select it -- also
+    // tuned for a mouse by default, also widened for a coarse (touch)
+    // pointer so a fingertip doesn't need to land pixel-perfectly on a
+    // hairline to grab it.
+    var tol = (coarsePointer() ? 14 : 9) / state.view.scale;
     for (var i = state.objects.length - 1; i >= 0; i--){
       var o = state.objects[i];
       if (o.hidden || (o.locked && !includeLocked)) continue;
@@ -3321,7 +3390,18 @@
   stage.addEventListener("drop", function(e){
     e.preventDefault();
     var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f && (f.type.indexOf("image/") === 0 || isPdfFile(f))) loadImageFile(f);
+    if (!f || !(f.type.indexOf("image/") === 0 || isPdfFile(f))) return;
+    // A real bug, not just "the name reverts": this used to always call
+    // loadImageFile -- the full Open/replace path -- no matter what, even
+    // with a plan already loaded and renamed. Both the file name AND every
+    // annotation on it would silently vanish the instant a reference photo
+    // was dragged in, with no confirmation at all (unlike the Open BUTTON,
+    // which already asks first once there's something to lose). Dropping a
+    // photo/PDF onto an EXISTING plan now inserts it as a second image
+    // instead -- exactly what pasting one already did -- and only acts as
+    // Open when there's no plan loaded yet to lose in the first place.
+    if (state.imageW) insertImageFile(f);
+    else loadImageFile(f);
   });
 
   // Shared by both the "Open" (replace the plan) and "Insert image" (add a

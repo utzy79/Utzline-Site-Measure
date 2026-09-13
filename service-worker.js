@@ -191,7 +191,35 @@
 // and any selection on tablet/desktop (where the panel floats and never
 // pushes the canvas around), are unaffected -- nothing reflows there, so
 // nothing needs recentering.)
-var CACHE_NAME = "redline-cache-v25";
+// (v26: on the phone, the item-properties panel (color/weight/ends/text
+// size/hide/delete/edit) used to stack every applicable group one above
+// another -- up to 38vh of stacked rows depending on what was selected.
+// It's now a single row that scrolls sideways instead, the same pattern
+// the toolbar already used -- always a short, fixed-height strip no matter
+// how many groups the current object needs. Also enlarged every touch
+// target inside it: color swatches and the weight/text-size +/- buttons
+// went from 20px to 34px, the end-style dropdown got taller, and the
+// Start/End checkboxes went from 13px to 20px -- all of them were sized
+// for a mouse and were genuinely too small and close together for a
+// fingertip, causing mis-taps on the wrong control. Tablet/desktop, where
+// the panel floats rather than docking, are unaffected.)
+// (v27: dropping a photo onto the canvas used to always fully replace
+// whatever plan was already loaded -- wiping the custom file name AND every
+// annotation on it -- no matter what, unlike the Open button (which asks
+// first once there's something to lose) and unlike pasting an image (which
+// already inserted rather than replaced). Dropping a photo/PDF onto an
+// EXISTING plan now inserts it as a second image instead, matching paste;
+// it still acts as Open, picking up the dropped file's own name, only when
+// nothing is loaded yet, since there's nothing to lose in that case.)
+// (v28: a deliberate audit of every other small drag handle for the same
+// "sized for a mouse" problem the properties panel had in v26 -- object
+// resize corners, the label rotate/resize grips, and the tap tolerance for
+// grabbing a thin line/dimension/callout leader. All of these now enlarge
+// together on any coarse (touch) pointer -- phone, tablet, or a touch-
+// enabled Windows laptop/monitor, not just phones -- instead of waiting for
+// each one to get reported individually. Mouse/trackpad sizing is
+// unchanged.)
+var CACHE_NAME = "redline-cache-v28";
 
 var PRECACHE_URLS = [
   "./",
