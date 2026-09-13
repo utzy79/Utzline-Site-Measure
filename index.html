@@ -412,6 +412,19 @@
   .mbtn-accent{ background:var(--accent); border-color:var(--accent-ink); color:#fff; }
   .mbtn-accent:hover{ background:var(--accent-ink); }
 
+  /* ---------- share-as choice ---------- */
+  .share-choice-box{max-width:340px;}
+  .share-choice-options{display:flex; flex-direction:column; gap:8px; margin-bottom:14px;}
+  .share-choice-opt{
+    display:flex; flex-direction:column; align-items:flex-start; gap:2px;
+    text-align:left; font:inherit; width:100%; box-sizing:border-box;
+    padding:10px 12px; border-radius:8px; cursor:pointer;
+    border:1px solid var(--border-strong); background:var(--surface-2); color:var(--text-primary);
+  }
+  .share-choice-opt:hover, .share-choice-opt:focus-visible{ background:var(--surface-0); }
+  .share-choice-title{ font-size:13.5px; font-weight:600; }
+  .share-choice-sub{ font-size:11.5px; color:var(--text-secondary); line-height:1.35; }
+
   /* ---------- inline text editor ---------- */
   .inline-edit{
     position:absolute; z-index:25; min-width:24px;
@@ -589,7 +602,7 @@
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3.5 3.5h9.6l3.4 3.4v9.1a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1v-11.5a1 1 0 0 1 1-1z"/><path d="M6 3.5v4.2h6v-4.2"/><rect x="6" y="11.3" width="8" height="5.2" rx="0.6"/></svg>
       Save
     </button>
-    <button class="tbtn" id="shareBtn" title="Share the finished plan straight to Messages, WhatsApp, email, etc. (sends the same flattened PDF Save produces — falls back to a PNG photo if PDF export can't load)" style="display:none;">
+    <button class="tbtn" id="shareBtn" title="Share straight to Messages, WhatsApp, email, etc. — asks whether to send the current view or the full plan" style="display:none;">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v8"/><path d="M6.5 6.5L10 3l3.5 3.5"/><path d="M4.5 10.5v4a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-4"/></svg>
       Share
     </button>
@@ -656,6 +669,25 @@
         <div class="modal-actions">
           <button class="mbtn" id="renameCancel">Cancel</button>
           <button class="mbtn mbtn-accent" id="renameOk">Rename</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="shareChoiceBackdrop" hidden>
+      <div class="modal-box share-choice-box" role="dialog" aria-modal="true" aria-labelledby="shareChoiceLabel">
+        <p id="shareChoiceLabel">Share as:</p>
+        <div class="share-choice-options">
+          <button type="button" class="share-choice-opt" id="shareChoiceView">
+            <span class="share-choice-title">Current view</span>
+            <span class="share-choice-sub">A quick image of just what's on screen right now (this pan/zoom)</span>
+          </button>
+          <button type="button" class="share-choice-opt" id="shareChoiceFull">
+            <span class="share-choice-title">Full plan (PDF)</span>
+            <span class="share-choice-sub">The whole plan, sharp at any zoom — same as Save</span>
+          </button>
+        </div>
+        <div class="modal-actions">
+          <button class="mbtn" id="shareChoiceCancel">Cancel</button>
         </div>
       </div>
     </div>
@@ -3574,12 +3606,19 @@
   // the tag is what tells them apart at a glance without opening either:
   // the plain name is the one you can still open and keep working on, the
   // "_FLATTENED" one is the flattened copy for sending to someone else.
+  // "flattened" is normally just true/false (the existing Save/Save-PDF/
+  // Share-full-plan callers below) -- true tags the name "_FLATTENED", same
+  // as always. It can also be a string (used by the "share current view"
+  // snapshot) to tag it with something more specific than the generic
+  // "_FLATTENED", since that's a DIFFERENT kind of flattened output (a crop
+  // of whatever's on screen, not the whole plan) and worth telling apart if
+  // someone ends up with both in their downloads.
   function suggestFilename(ext, flattened){
     var d = new Date();
     var pad = function(n){ return String(n).padStart(2, "0"); };
     var datePart = d.getFullYear() + "_" + pad(d.getMonth() + 1) + "_" + pad(d.getDate());
     var timePart = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
-    var tag = flattened ? "_FLATTENED" : "";
+    var tag = flattened === true ? "_FLATTENED" : (flattened ? "_" + flattened : "");
     return (state.fileBase || "plan") + tag + " " + datePart + " " + timePart + "." + ext;
   }
   // The base photo lives at a fixed [0,0,imageW,imageH] rectangle, but a
@@ -4002,10 +4041,11 @@
   // of a save-then-go-find-it-and-attach round trip. Only where the Web
   // Share API (with file support) actually exists -- Android Chrome/TWA and
   // some desktop browsers; Firefox and others simply never show the button.
-  // Shares the same flattened PDF Save produces (real vector text/lines,
-  // sharp at any zoom) so there's exactly one "send this to someone" file
-  // shape across the app, falling back to a flattened PNG in the same
-  // situations Save's own PDF half already falls back for. ----
+  // Tapping it asks which of two things to share -- see the "share as"
+  // dialog below -- since "the whole plan" and "just what I'm looking at
+  // right now" are genuinely different things to send someone (a full PDF
+  // vs a quick picture of the current pan/zoom), and there was previously
+  // no way to get the second one at all. ----
   function isShareSupported(){
     return typeof navigator.share === "function";
   }
@@ -4029,7 +4069,77 @@
       showToast(reasonPrefix + "couldn't prepare a file to share.");
     });
   }
-  function shareCurrentPlanNow(){
+  // ---- "Current view" -- a quick raster of exactly what's visible in the
+  // canvas right now (this pan/zoom), for pointing out one detail instead
+  // of sending the whole plan. Deliberately follows the SCREEN, not the
+  // plan's content -- zoomed into one corner, that's all that's in it; zoomed
+  // out past the photo's edge, the blank margin comes along too, same as a
+  // real screenshot would show. Doesn't touch jsPDF/svg2pdf at all (same
+  // raster technique as the plain PNG export above), so it works even on a
+  // network where those two CDN scripts can't load.
+  function computeViewportWorldBounds(){
+    var r = svgRoot.getBoundingClientRect();
+    var s = state.view.scale;
+    return {
+      x0: (0 - state.view.tx) / s, y0: (0 - state.view.ty) / s,
+      x1: (r.width - state.view.tx) / s, y1: (r.height - state.view.ty) / s
+    };
+  }
+  function renderViewSnapshotBlob(){
+    var cb = computeViewportWorldBounds();
+    var contentW = cb.x1 - cb.x0, contentH = cb.y1 - cb.y0;
+    // Matches the current on-screen resolution (times device pixel ratio,
+    // capped) rather than the big fixed supersample the full export uses --
+    // this is meant to be "what you're looking at right now", not a
+    // maximum-quality copy of the plan.
+    var dpr = clamp(window.devicePixelRatio || 1, 1, 3);
+    var outW = Math.max(1, Math.round(contentW * dpr));
+    var outH = Math.max(1, Math.round(contentH * dpr));
+    var clone = cloneWorldForExport();
+    var outSvg = document.createElementNS(SVG_NS, "svg");
+    outSvg.setAttribute("xmlns", SVG_NS);
+    outSvg.setAttribute("width", outW);
+    outSvg.setAttribute("height", outH);
+    outSvg.setAttribute("viewBox", cb.x0 + " " + cb.y0 + " " + contentW + " " + contentH);
+    outSvg.appendChild(embeddedFontStyleEl());
+    outSvg.appendChild(clone);
+    var xml = new XMLSerializer().serializeToString(outSvg);
+    var svg64 = btoa(unescape(encodeURIComponent(xml)));
+    var dataUrl = "data:image/svg+xml;base64," + svg64;
+    // Matches the app's OWN current background (whichever of light/dark is
+    // actually showing right now -- see the appearance toggle above) so
+    // panning past the edge of the photo looks the same in the shared image
+    // as it does on screen, instead of coming out black/transparent.
+    var bg = getComputedStyle(document.documentElement).getPropertyValue("--surface-0").trim() || "#ffffff";
+    return new Promise(function(resolve, reject){
+      var img = new Image();
+      img.onload = function(){
+        var canvas = document.createElement("canvas");
+        canvas.width = outW; canvas.height = outH;
+        var ctx = canvas.getContext("2d");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, outW, outH);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, outW, outH);
+        canvas.toBlob(function(blob){ blob ? resolve(blob) : reject(new Error("toBlob failed")); }, "image/png");
+      };
+      img.onerror = function(){ reject(new Error("svg rasterize failed")); };
+      img.src = dataUrl;
+    });
+  }
+  function shareViewSnapshot(){
+    renderViewSnapshotBlob().then(function(blob){
+      shareFile(new File([blob], suggestFilename("png", "VIEW"), { type: "image/png" }));
+    }).catch(function(err){
+      console.error("Share (current view) failed:", err);
+      showToast("Couldn't prepare the current view to share.");
+    });
+  }
+  // ---- "Full plan" -- the same flattened PDF Save produces (real vector
+  // text/lines, sharp at any zoom), falling back to a flattened PNG in the
+  // same situations Save's own PDF half already falls back for.
+  function shareFullPlanNow(){
     renderExportPdfBlob().then(function(blob){
       shareFile(new File([blob], suggestFilename("pdf", true), { type: "application/pdf" }));
     }).catch(function(err){
@@ -4037,19 +4147,46 @@
       shareAsPngFallback("Couldn't build the PDF — ");
     });
   }
-  function shareCurrentPlan(){
-    if (!state.imageW){ showToast("Open a plan or photo first."); return; }
+  function shareFullPlan(){
     if (window.__pdfLibFailed){ shareAsPngFallback("PDF export couldn't load (network/firewall) — "); return; }
     if (!pdfLibsReady()){
       showToast("Preparing to share…");
       waitForPdfLibs(8000).then(function(ready){
         if (window.__pdfLibFailed){ shareAsPngFallback("PDF export couldn't load (network/firewall) — "); return; }
         if (!ready){ showToast("Still loading — try Share again in a moment."); return; }
-        shareCurrentPlanNow();
+        shareFullPlanNow();
       });
       return;
     }
-    shareCurrentPlanNow();
+    shareFullPlanNow();
+  }
+  // ---- "Share as" choice dialog -- same open/resolve-a-promise-on-close
+  // shape as the rename dialog above. Resolves "view", "full", or null
+  // (cancelled/dismissed).
+  var shareChoiceBackdrop = document.getElementById("shareChoiceBackdrop");
+  var shareChoiceViewBtn = document.getElementById("shareChoiceView");
+  var shareChoiceFullBtn = document.getElementById("shareChoiceFull");
+  var shareChoiceCancelBtn = document.getElementById("shareChoiceCancel");
+  var shareChoiceResolve = null;
+  function openShareChoice(){
+    shareChoiceBackdrop.hidden = false;
+    return new Promise(function(resolve){ shareChoiceResolve = resolve; });
+  }
+  function closeShareChoice(mode){
+    shareChoiceBackdrop.hidden = true;
+    var resolve = shareChoiceResolve; shareChoiceResolve = null;
+    if (resolve) resolve(mode);
+  }
+  shareChoiceViewBtn.addEventListener("click", function(){ closeShareChoice("view"); });
+  shareChoiceFullBtn.addEventListener("click", function(){ closeShareChoice("full"); });
+  shareChoiceCancelBtn.addEventListener("click", function(){ closeShareChoice(null); });
+  shareChoiceBackdrop.addEventListener("click", function(e){ if (e.target === shareChoiceBackdrop) closeShareChoice(null); });
+  function shareCurrentPlan(){
+    if (!state.imageW){ showToast("Open a plan or photo first."); return; }
+    openShareChoice().then(function(mode){
+      if (mode === "view") shareViewSnapshot();
+      else if (mode === "full") shareFullPlan();
+    });
   }
   var shareBtn = document.getElementById("shareBtn");
   if (isShareSupported()){

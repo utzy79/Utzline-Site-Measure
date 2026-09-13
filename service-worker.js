@@ -135,7 +135,13 @@
 // app look unexpectedly light on one such setup. Cycles system (matches
 // your device, same as before) -> light -> dark -> back to system, and
 // remembers the choice for next time.)
-var CACHE_NAME = "redline-cache-v20";
+// (v21: Share now asks what to send instead of always sending the whole
+// plan as a PDF -- "Current view" (a quick picture of exactly what's on
+// screen right now, at the current pan/zoom) or "Full plan" (the same
+// whole-plan PDF Share always sent before). "Current view" doesn't depend
+// on the PDF export libraries at all, so it also works on a network where
+// those can't load.)
+var CACHE_NAME = "redline-cache-v21";
 
 var PRECACHE_URLS = [
   "./",
