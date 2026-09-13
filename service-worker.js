@@ -161,7 +161,24 @@
 // from Downloads/your Files app instead -- the same path already confirmed
 // to work. Cancelling the share sheet yourself is still not treated as a
 // failure, exactly as before.)
-var CACHE_NAME = "redline-cache-v23";
+// (v24: three changes -- (1) editing a dimension or angle's label now opens
+// Android (and iOS) straight to the compact numeric keypad instead of the
+// full keyboard, since that text is almost always a measurement -- callouts
+// and plain text objects are unaffected, they still get the normal text
+// keyboard; (2) a real bug found from a bug report: on the phone, selecting
+// something for the first time opens the docked properties panel, which
+// pushes the canvas down -- but that's a genuine layout change, and the very
+// next drag movement was measuring itself against the canvas's NEW position
+// while still anchored to where it started BEFORE the panel opened, so the
+// object you'd just selected could suddenly leap a large, wrong distance the
+// instant you tried to move it. Fixed by re-anchoring the drag the moment
+// the panel finishes opening, so a tap-turned-drag right after selecting
+// something now only moves it by exactly as far as your finger actually
+// travelled; (3) added a version tag to the quick-help tip (open it anytime
+// via the "?" button) so it's possible to confirm which build is actually
+// running on any device without needing dev tools -- keep this number, the
+// zip's filename, and this file's own CACHE_NAME all matching from now on.)
+var CACHE_NAME = "redline-cache-v24";
 
 var PRECACHE_URLS = [
   "./",

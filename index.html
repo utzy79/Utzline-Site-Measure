@@ -732,6 +732,13 @@
   "use strict";
 
   /* ============================== constants ============================== */
+  // Single source of truth for the version shown in the app itself (the
+  // quick-help tip, so it's visible on phone widths too, unlike the .brand
+  // subtitle which is hidden there) -- bump this alongside every functional
+  // change, at the same time as service-worker.js's CACHE_NAME and the
+  // delivered zip's filename, so all three always agree on the same number
+  // instead of drifting out of sync with each other.
+  var APP_VERSION = "v24";
   var SVG_NS = "http://www.w3.org/2000/svg";
   // Embedded copies (base64 woff2, weight 500 -- the only weight the app
   // ever measures or draws text with) of the two custom Google Fonts used
@@ -2103,7 +2110,21 @@
         state.selectedId = hitO.id;
         bringSelectedToFront();
         renderAll();
-        dragMode = { kind: "move", id: hitO.id, start: deepClone(hitO), startWorld: wp };
+        // Selecting something new can open the phone-docked properties
+        // panel, which pushes the canvas down and changes svgRoot's
+        // on-screen rect right in the middle of this same tap-to-select
+        // gesture. If the drag anchor below still used "wp" (computed a
+        // moment earlier, against the OLD rect), the very next pointermove
+        // -- which recomputes world coordinates against the NEW, shifted
+        // rect -- would see a big spurious jump purely from that reflow,
+        // with the same finger position now mapping to a different world
+        // point, yanking the object that was just selected. Re-deriving
+        // the anchor from the same screen point AFTER the panel has had
+        // its chance to open keeps it consistent with whatever rect every
+        // subsequent pointermove will use, so a plain tap (or a real drag
+        // that starts right after) never mistakes that reflow for a drag.
+        var dragWp = screenToWorld(startClient.x, startClient.y);
+        dragMode = { kind: "move", id: hitO.id, start: deepClone(hitO), startWorld: dragWp };
         return;
       }
       state.selectedId = null; renderAll();
@@ -2565,6 +2586,15 @@
     editorEl.value = label.text || "";
     editorEl.style.color = label.color;
     editorEl.style.fontFamily = fontStack(label.family);
+    // Dimension/angle labels are a measurement almost every time ("1200",
+    // "45") -- inputMode "decimal" makes Android (and iOS) open straight to
+    // a numeric keypad instead of the full QWERTY layout, which is both the
+    // "open to numbers first" behavior and, since that keypad has far fewer
+    // keys, noticeably smaller on screen too. Callouts and plain text
+    // objects are free-form ("Drawer", "confirm on site"), so they keep the
+    // normal text keyboard. This only changes which keypad the OS offers by
+    // default -- switching keyboards by hand still works exactly as before.
+    editorEl.inputMode = (obj.type === "dimension" || obj.type === "angle") ? "decimal" : "text";
     stage.appendChild(editorEl);
     reflowInlineEditor();
     editorEl.focus();
@@ -4424,6 +4454,12 @@
   });
 
   function boot(){
+    // Tag the version onto the quick-help tip (reachable on every screen
+    // size via the "?" button, unlike the .brand subtitle which is hidden
+    // on phone widths) so it's always possible to eyeball which build is
+    // actually running, on any device, without digging into devtools.
+    var hintTextEl = document.getElementById("emptyHintText");
+    if (hintTextEl) hintTextEl.appendChild(document.createTextNode(" · " + APP_VERSION));
     if (window.claude && window.claude.use){
       window.claude.use("downloads").then(function(d){ downloadsApi = d; }).catch(function(){});
     }
