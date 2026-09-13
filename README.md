@@ -77,6 +77,27 @@ for ordinary fixes or features.
   you tap Save right after opening the app — this only matters on a slow
   connection, and it'll show a "Preparing PDF export…" message while it
   waits rather than skipping the PDF silently.
+- **Share on Windows (Edge/Chrome) can fail with "Try that again — We
+  couldn't show you all the ways you could share"** — this is a Windows/
+  Edge issue, not the app: it showed up on a real machine even after setting
+  a default email app, updating Edge, resetting Edge's settings, and
+  clearing its cache, while the exact same file shared fine straight from
+  File Explorer's own Share option on that same machine — confirming it's
+  a bug in how Edge itself invokes Windows' share panel for files, with no
+  fix available from the app's side. Since v23, Share no longer leaves you
+  stuck on that error: if the share sheet fails (or Windows reports it
+  isn't actually usable, even though the button showed up), it now
+  automatically saves the exact file it was trying to send and tells you to
+  open it from Downloads (or your Files app) and share it from there —
+  which is the one path already confirmed to work. Worth trying first
+  anyway, since it sometimes does clear the underlying error: **Settings →
+  Apps → Default apps → Email → set one** (Outlook, Mail, whatever's
+  installed), updating Edge, Edge **Settings → Reset settings**, or
+  clearing Edge's cache (**Settings → Privacy, search, and services → Clear
+  browsing data → Cached images and files**). Also worth knowing: **Share
+  only shows up at all on an `https://` install** (this hosted site, or the
+  artifact link) — opening `index.html` straight from a downloaded/unzipped
+  folder (a `file://` address) never exposes it, no matter the browser.
 
 ## What's in this folder
 

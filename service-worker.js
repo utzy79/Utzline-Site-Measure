@@ -141,7 +141,27 @@
 // whole-plan PDF Share always sent before). "Current view" doesn't depend
 // on the PDF export libraries at all, so it also works on a network where
 // those can't load.)
-var CACHE_NAME = "redline-cache-v21";
+// (v22: two additions -- (1) a new "zoom to rectangle" tool (magnifier
+// icon, shortcut Z): drag a box around any area and the view zooms to fit
+// exactly that box, instead of only being able to scroll/pinch-zoom around
+// whatever's already on screen; (2) on the phone, the item-properties
+// panel (color/weight/ends/etc) used to float directly over the canvas at
+// its usual spot, which on a narrow screen meant it sat right on top of
+// the photo -- it's now docked as its own strip directly under the
+// toolbar instead, so it never covers the image. Tablet/desktop are
+// unaffected by the second change.)
+// (v23: on some Windows/Edge installs the in-app Share button reliably
+// fails with Windows' own "Try that again — We couldn't show you all the
+// ways you could share" error -- confirmed to be an Edge/Windows-side bug,
+// not this app (the identical file shares fine from File Explorer's native
+// Share on the same machine, and there is no app-side fix for it). Share
+// no longer leaves you on that dead end: when the share sheet fails (or
+// isn't actually usable despite being detected), it now automatically
+// saves the exact file it was trying to send and tells you to share it
+// from Downloads/your Files app instead -- the same path already confirmed
+// to work. Cancelling the share sheet yourself is still not treated as a
+// failure, exactly as before.)
+var CACHE_NAME = "redline-cache-v23";
 
 var PRECACHE_URLS = [
   "./",

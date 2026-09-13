@@ -440,7 +440,27 @@
 
   @media (max-width:640px){
     .brand{display:none;}
-    .panel{width:168px; left:8px; top:8px;}
+    /* The item-properties panel (color/weight/ends/etc for whatever's
+       selected) used to float OVER the canvas here too -- only 168px wide,
+       but tall enough to sit right over the top-left corner of whatever
+       photo/plan is loaded, hiding real content underneath exactly where
+       selecting something makes it most likely to matter. Docking it as
+       its own full-width strip directly under the toolbar -- real layout
+       space, not an overlay -- means it never covers the image again, at
+       the cost of a shorter canvas while something is selected. .stage
+       becomes a column flex container to make room for it as a proper
+       row; every OTHER child of .stage (the canvas SVG aside) stays
+       position:absolute (the empty-hint tip, layers panel, status, toast,
+       every modal) so turning .stage into a flex container doesn't move
+       any of those -- absolutely-positioned children are unaffected by
+       their parent's display mode. Unchanged at tablet/desktop widths. */
+    .stage{ display:flex; flex-direction:column; }
+    svg#svgRoot{ flex:1 1 auto; min-height:0; height:auto; }
+    .panel{
+      position:static; order:-1; flex:none; width:100%;
+      max-height:38vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+      border-radius:0; border-width:0 0 1px;
+    }
     .status{font-size:10px;}
     .layers-panel{width:min(240px, calc(100vw - 16px)); right:8px; top:8px; max-height:60vh;}
 
@@ -528,6 +548,9 @@
       </button>
       <button class="ibtn" data-tool="callout" title="Callout note (C)" aria-label="Callout tool">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><circle cx="5" cy="15" r="1.4" fill="currentColor" stroke="none"/><path d="M5 15L11 7"/><rect x="10" y="2.5" width="7.5" height="6" rx="1.2"/></svg>
+      </button>
+      <button class="ibtn" data-tool="zoomrect" title="Zoom to rectangle — drag an area to zoom into it (Z)" aria-label="Zoom to rectangle tool">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.2" y="2.2" width="9.6" height="7.6" rx="0.8" stroke-dasharray="2.1 1.7"/><circle cx="13.6" cy="13.6" r="3.1"/><path d="M16.1 16.1L18.2 18.2" stroke-linecap="round"/></svg>
       </button>
     </div>
 
@@ -2123,6 +2146,17 @@
       return;
     }
 
+    // Zoom-to-rectangle is a navigation gesture, not a mark on the plan --
+    // deliberately kept out of the generic drag-to-create path below: no
+    // grid snapping (it's selecting a view, not placing something precise),
+    // and no currentColor() lookup (that lazily adds a real entry to the
+    // saved per-type color map for a "type" that's never actually drawn).
+    if (state.tool === "zoomrect"){
+      state.drawing = { type: "zoomrect", x0: wp.x, y0: wp.y, startClient: startClient };
+      dragMode = { kind: "draw" };
+      return;
+    }
+
     // drag-to-create tools
     var startWp = snapWorldPoint(wp);
     state.drawing = { type: state.tool, x0: startWp.x, y0: startWp.y, startClient: startClient, color: currentColor(state.tool) };
@@ -2168,6 +2202,11 @@
     }
     if (dragMode.kind === "draw" && state.drawing){
       var dp = state.drawing;
+      if (dp.type === "zoomrect"){
+        dp.x1 = wp.x; dp.y1 = wp.y;
+        renderPreview();
+        return;
+      }
       if (dp.type === "angle" && dp.phase === 2){
         // Leg 1 is already fixed — this phase only aims/lengthens leg 2,
         // tracked continuously (dragMode is deliberately kept alive across
@@ -2406,6 +2445,23 @@
   function renderPreview(){
     clearPreview();
     var d = state.drawing;
+    // Zoom-to-rectangle's marquee is a plain selection-style box, not a real
+    // annotation object -- it never goes through buildDrawingObject()/
+    // renderObject() (those are for things that can end up saved on the
+    // plan; this never does).
+    if (d.type === "zoomrect"){
+      var zx1 = d.x1 === undefined ? d.x0 : d.x1, zy1 = d.y1 === undefined ? d.y0 : d.y1;
+      var mx = Math.min(d.x0, zx1), my = Math.min(d.y0, zy1);
+      var mw = Math.abs(zx1 - d.x0), mh = Math.abs(zy1 - d.y0);
+      var mr = el("rect", {
+        x: mx, y: my, width: mw, height: mh, class: "ui-preview-node",
+        fill: "var(--focus)", "fill-opacity": "0.12", stroke: "var(--focus)",
+        "stroke-width": 1.5 / state.view.scale,
+        "stroke-dasharray": (5 / state.view.scale) + "," + (4 / state.view.scale)
+      });
+      objectsLayer.appendChild(mr);
+      return;
+    }
     var obj = buildDrawingObject(d, true);
     if (!obj) return;
     var g = renderObject(obj, true);
@@ -2438,9 +2494,40 @@
     }
     return null;
   }
+  // Zooms the view to frame the given world-space rectangle (same fitting
+  // math as fitToView(), just against an arbitrary rect instead of the base
+  // photo's full size): centers it in the viewport at the largest scale
+  // that still fits it with a small margin, clamped to the same zoom range
+  // as every other way of zooming.
+  function zoomToWorldRect(x0, y0, x1, y1){
+    var r = svgRoot.getBoundingClientRect();
+    var w = Math.max(1e-6, x1 - x0), h = Math.max(1e-6, y1 - y0);
+    var s = clamp(Math.min(r.width / w, r.height / h) * 0.92, MIN_SCALE, MAX_SCALE);
+    state.view.scale = s;
+    state.view.tx = r.width / 2 - (x0 + w / 2) * s;
+    state.view.ty = r.height / 2 - (y0 + h / 2) * s;
+    applyView();
+  }
   function finalizeDrawing(){
     var d = state.drawing;
     clearPreview();
+    // Zoom-to-rectangle never creates an object or touches history -- it
+    // only moves the view -- so it's handled and returned before any of the
+    // object-creation logic below even runs.
+    if (d.type === "zoomrect"){
+      var zx1f = d.x1 === undefined ? d.x0 : d.x1, zy1f = d.y1 === undefined ? d.y0 : d.y1;
+      var zMoved = Math.hypot(zx1f - d.x0, zy1f - d.y0) * state.view.scale;
+      state.drawing = null;
+      // A near-zero drag (a stray tap/click rather than a deliberate box)
+      // is treated as "changed my mind" -- back to Select with the view
+      // left exactly where it was, not a jarring zoom to a speck.
+      if (zMoved >= 6){
+        zoomToWorldRect(Math.min(d.x0, zx1f), Math.min(d.y0, zy1f), Math.max(d.x0, zx1f), Math.max(d.y0, zy1f));
+      }
+      setTool("select");
+      renderAll();
+      return;
+    }
     var dx, dy;
     if (d.type === "angle"){
       // Leg 1's own length was already checked when phase 2 began — this
@@ -2613,6 +2700,7 @@
     else if (k === "r") setTool("rect");
     else if (k === "t") setTool("text");
     else if (k === "c") setTool("callout");
+    else if (k === "z") setTool("zoomrect");
     else if (k === "escape"){ state.drawing = null; dragMode = null; clearPreview(); state.selectedId = null; renderAll(); }
     else if ((k === "delete" || k === "backspace") && state.selectedId){ e.preventDefault(); deleteSelected(); }
     else if (k === "0") fitToView();
@@ -4052,14 +4140,28 @@
   function shareFile(file){
     var shareData = { files: [file] };
     if (navigator.canShare && !navigator.canShare(shareData)){
-      showToast("Sharing files isn't supported here — use Save instead.");
+      browserDownloadBlob(file, file.name);
+      showToast("Sharing files isn't supported here — saved \"" + file.name + "\" instead. Open it from Downloads (or your Files app) and share it from there.");
       return;
     }
     navigator.share(shareData).catch(function(err){
       // AbortError just means the person closed the share sheet without
       // picking anything -- they cancelled on purpose, not a failure.
       if (err && err.name === "AbortError") return;
-      showToast("Couldn't open the share screen — try again, or use Save instead.");
+      // Some Windows/Edge setups fail here every single time with no real
+      // fix on the page's end -- a known OS/browser-side bug in how Edge
+      // asks Windows to enumerate share targets ("Try that again — We
+      // couldn't show you all the ways you could share"), confirmed
+      // separately across multiple installs and unrelated to anything this
+      // app does (a plain photo shared the same way from File Explorer
+      // works fine on the very same machine). Rather than leave the person
+      // stuck on a dead "try again" message every time they tap Share,
+      // automatically save the exact same file they were trying to send
+      // and point them at their file manager's own Share button instead --
+      // that one reliably works even when this in-page one doesn't.
+      console.error("Share failed:", err);
+      browserDownloadBlob(file, file.name);
+      showToast("Share didn't open — saved \"" + file.name + "\" instead. Open it from Downloads (or your Files app) and use its Share button from there.");
     });
   }
   function shareAsPngFallback(reasonPrefix){
