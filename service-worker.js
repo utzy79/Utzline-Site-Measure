@@ -230,7 +230,27 @@
 // if there is, the new worker installs, takes over, and the page reloads
 // itself onto it automatically -- no more waiting for the next natural
 // reload or manually clearing storage.)
-var CACHE_NAME = "redline-cache-v29";
+// (v30: the auto-backup control moved to the very end of the toolbar's
+// second row, after Exit -- it's a settings-style control rather than a
+// file action like New/Open/Save/Share, so it now sits past everything you
+// actually DO with a plan instead of competing with those for the first
+// spot in the row. Purely a position change; the toggle/stepper/lock/
+// folder-picker all work exactly as before.)
+// (v31: a real report of saving a project straight into a Dropbox-synced
+// folder coming back as an empty file. The write itself was already
+// verified as soon as it happened (v4), but a cloud-sync client (Dropbox
+// Smart Sync, OneDrive Files On-Demand) watching that folder can still step
+// in and hollow the file out a few seconds later -- after our own check
+// already passed, entirely outside anything the browser can see at write
+// time. Two changes: (1) every verified write now gets a delayed re-check a
+// few seconds later, and warns if the file has since gone empty, naming
+// the likely cause and the fix (set that specific folder to always keep
+// files on this device / turn off Smart Sync or Files On-Demand) instead
+// of leaving a silently-empty file with no explanation; (2) a folder-backup
+// that keeps failing for any OTHER reason no longer retries completely
+// silently forever either -- it now warns once instead of never saying
+// anything at all.)
+var CACHE_NAME = "redline-cache-v31";
 
 var PRECACHE_URLS = [
   "./",

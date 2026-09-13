@@ -625,23 +625,6 @@
     <div class="toolbar-row" id="toolbarRow2">
     <div class="spacer"></div>
 
-    <div class="tgroup autobk-group" id="autoBackupGroup">
-      <label class="autobk" id="autoBackupLabel" title="Offers a backup PNG for download on this schedule while you have unsaved changes (each save still needs your confirmation — that step can't be skipped)">
-        <input type="checkbox" id="autoBackupToggle" checked>
-        Auto-backup
-      </label>
-      <div class="autobk-stepper" id="autoBackupStepper" title="How often auto-backup offers a save">
-        <button type="button" id="autoBackupMinus" aria-label="Decrease auto-backup interval">−</button>
-        <span id="autoBackupIntervalLabel">5m</span>
-        <button type="button" id="autoBackupPlus" aria-label="Increase auto-backup interval">+</button>
-      </div>
-      <button type="button" class="autobk-lock" id="autoBackupLockBtn" title="Lock these settings so they can't be changed by accident" aria-label="Lock auto-backup settings" aria-pressed="false">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="10" height="7" rx="1.3"/><path id="autoBackupLockShackle" d="M7 9V6.5a3 3 0 0 1 6 0"/></svg>
-      </button>
-      <button type="button" class="autobk-lock" id="autoBackupFolderBtn" title="Choose a folder to save auto-backups to directly — no download prompts (Chrome/Edge desktop only)" aria-label="Choose auto-backup folder" style="display:none;">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 6a1 1 0 0 1 1-1h3.3l1.2 1.4h7a1 1 0 0 1 1 1v7.1a1 1 0 0 1-1 1h-11.5a1 1 0 0 1-1-1z"/></svg>
-      </button>
-    </div>
     <button class="tbtn" id="newBtn" title="Start a new file — clears the current plan and its annotations back to a blank canvas, ready for Open/Insert/paste or to draw on directly">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5 2.5h6l3.5 3.5V16a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M11 2.5V6h3.5" stroke-linecap="round"/><path d="M10 9.5v4M8 11.5h4" stroke-linecap="round"/></svg>
       New
@@ -673,6 +656,29 @@
     <button class="ibtn" id="exitAppBtn" title="Exit app" aria-label="Exit app" style="display:none;">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2H4.8a1 1 0 0 0-1 1v11.6a1 1 0 0 0 1 1H8"/><path d="M7.8 10h8.4M12.8 6.2l3.8 3.8-3.8 3.8"/></svg>
     </button>
+
+    <!-- Moved to the very end of the row (after Exit) at the user's request
+         -- it's a settings-style control, not a file action like New/Open/
+         Save, so it reads better tucked away past everything you actually
+         DO with a plan, rather than sitting first and competing with them
+         for attention. -->
+    <div class="tgroup autobk-group" id="autoBackupGroup">
+      <label class="autobk" id="autoBackupLabel" title="Offers a backup PNG for download on this schedule while you have unsaved changes (each save still needs your confirmation — that step can't be skipped)">
+        <input type="checkbox" id="autoBackupToggle" checked>
+        Auto-backup
+      </label>
+      <div class="autobk-stepper" id="autoBackupStepper" title="How often auto-backup offers a save">
+        <button type="button" id="autoBackupMinus" aria-label="Decrease auto-backup interval">−</button>
+        <span id="autoBackupIntervalLabel">5m</span>
+        <button type="button" id="autoBackupPlus" aria-label="Increase auto-backup interval">+</button>
+      </div>
+      <button type="button" class="autobk-lock" id="autoBackupLockBtn" title="Lock these settings so they can't be changed by accident" aria-label="Lock auto-backup settings" aria-pressed="false">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="10" height="7" rx="1.3"/><path id="autoBackupLockShackle" d="M7 9V6.5a3 3 0 0 1 6 0"/></svg>
+      </button>
+      <button type="button" class="autobk-lock" id="autoBackupFolderBtn" title="Choose a folder to save auto-backups to directly — no download prompts (Chrome/Edge desktop only)" aria-label="Choose auto-backup folder" style="display:none;">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 6a1 1 0 0 1 1-1h3.3l1.2 1.4h7a1 1 0 0 1 1 1v7.1a1 1 0 0 1-1 1h-11.5a1 1 0 0 1-1-1z"/></svg>
+      </button>
+    </div>
     </div><!-- /toolbarRow2 -->
     <input type="file" id="fileInput" accept="image/*,application/pdf" style="display:none">
     <input type="file" id="insertImageInput" accept="image/*,application/pdf" style="display:none">
@@ -779,7 +785,7 @@
   // change, at the same time as service-worker.js's CACHE_NAME and the
   // delivered zip's filename, so all three always agree on the same number
   // instead of drifting out of sync with each other.
-  var APP_VERSION = "v29";
+  var APP_VERSION = "v31";
   var SVG_NS = "http://www.w3.org/2000/svg";
   // Embedded copies (base64 woff2, weight 500 -- the only weight the app
   // ever measures or draws text with) of the two custom Google Fonts used
@@ -892,6 +898,31 @@
       return handle.getFile();
     }).then(function(f){
       if (!f || f.size !== blob.size) return Promise.reject({ code: "empty_write" });
+      // A cloud-sync client watching this folder (Dropbox, OneDrive, etc)
+      // can still step in and rewrite or hollow out the file a moment
+      // AFTER this check already passed -- outside anything the browser
+      // can see at write time, since createWritable's own atomic-rename-on-
+      // close is exactly the kind of file replacement some sync clients'
+      // "online-only"/Smart-Sync placeholder handling mishandles. This
+      // can't prevent that, only catch it a little after the fact and say
+      // something -- otherwise the file just silently goes empty on disk
+      // with the app having already reported "saved" and moved on, which
+      // matches a real report of a project file left completely empty
+      // after being saved straight into a Dropbox folder. Best-effort: if
+      // the handle/permission is gone by the time this fires (tab closed,
+      // folder unmounted, USB drive removed), it just quietly gives up.
+      var expectedSize = blob.size;
+      var checkedName = (handle && handle.name) || "the file";
+      setTimeout(function(){
+        handle.getFile().then(function(f2){
+          if (f2 && f2.size !== expectedSize){
+            showToast(
+              "“" + checkedName + "” changed size right after saving — if it's now empty, a sync app (Dropbox/OneDrive/etc) watching that folder likely rewrote it afterward. Try setting that specific folder to always keep files on this device (turn off Smart Sync / Files On-Demand / online-only) instead of saving straight into an online-only folder.",
+              7000
+            );
+          }
+        }).catch(function(){});
+      }, 3000);
       return { status: "saved" };
     });
   }
@@ -1168,11 +1199,15 @@
     var idx = state.objects.findIndex(function(o){ return o.id === state.selectedId; });
     if (idx > -1){ var o = state.objects.splice(idx, 1)[0]; state.objects.push(o); }
   }
-  function showToast(msg){
+  // durationMs lets a rarer, longer, more important message (a save that
+  // may have silently gone wrong, say) stay up long enough to actually
+  // read -- every existing call just omits it and keeps the same 2400ms
+  // as before.
+  function showToast(msg, durationMs){
     toast.textContent = msg;
     toast.classList.add("show");
     clearTimeout(showToast._t);
-    showToast._t = setTimeout(function(){ toast.classList.remove("show"); }, 2400);
+    showToast._t = setTimeout(function(){ toast.classList.remove("show"); }, durationMs || 2400);
   }
   function screenToWorld(clientX, clientY){
     var r = svgRoot.getBoundingClientRect();
@@ -1394,6 +1429,20 @@
       return Promise.reject(err);
     });
   }
+  // Every branch below used to retry a failed backup completely silently
+  // forever (a bare .catch(){ backupDirty = true; }) -- fine for a single
+  // hiccup, but a real report of empty files landing in a Dropbox-synced
+  // backup folder turned up NO warning of any kind along the way, on
+  // either save path. Same one-warning-per-occurrence pattern as
+  // autosaveWarned below: say something once a backup has actually failed,
+  // then go quiet again until either it succeeds (reset) or fails again
+  // after that.
+  var autoBackupFailWarned = false;
+  function warnAutoBackupFail(){
+    if (autoBackupFailWarned) return;
+    autoBackupFailWarned = true;
+    showToast("Auto-backup failed and will keep retrying — if it keeps happening, check that the backup folder still exists and isn't a cloud-sync \"online-only\" location (Dropbox Smart Sync, OneDrive Files On-Demand, etc).", 6000);
+  }
   function maybeAutoBackup(){
     var canDownloadsApi = !!downloadsApi;
     var canFolder = backupDirSupported && backupDirHandle && backupDirPermissionOK;
@@ -1413,9 +1462,10 @@
       renderExportBlob().then(function(blob){
         return downloadsApi.save({ filename: autoBackupFilename(), data: blob });
       }).then(function(res){
-        if (res && res.status === "saved") showToast("Backed up.");
+        if (res && res.status === "saved"){ showToast("Backed up."); autoBackupFailWarned = false; }
       }).catch(function(){
         backupDirty = true; // retry on the next tick
+        warnAutoBackupFail();
       });
       return;
     }
@@ -1442,11 +1492,14 @@
         return writeBlobToBackupDir(jsonBlob, autoBackupProjectFilename());
       }).then(function(){
         showToast("Backed up.");
+        autoBackupFailWarned = false;
       }).catch(function(err){
         backupDirty = true; // retry on the next tick
         if (err && err.code === "permission_lost"){
           backupDirPermissionOK = false;
           refreshBackupDirUI();
+        } else {
+          warnAutoBackupFail();
         }
       });
       return;
@@ -1471,8 +1524,10 @@
       browserDownloadBlob(pngBlob, autoBackupFilename());
       browserDownloadBlob(jsonBlob2, autoBackupProjectFilename());
       showToast("Backed up.");
+      autoBackupFailWarned = false;
     }).catch(function(){
       backupDirty = true; // retry on the next tick
+      warnAutoBackupFail();
     });
   }
   setInterval(maybeAutoBackup, 30 * 1000);
