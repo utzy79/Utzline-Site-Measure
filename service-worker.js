@@ -250,7 +250,81 @@
 // that keeps failing for any OTHER reason no longer retries completely
 // silently forever either -- it now warns once instead of never saying
 // anything at all.)
-var CACHE_NAME = "redline-cache-v31";
+// (v32: a round of field-test fixes. (1) Drawing a dimension is now a true
+// two-motion tool like iPhotoDraw's -- draw the two measured points as
+// normal (the delimiters land exactly there and never move again), then a
+// second drag on the object's body slides the visible dimension line/label
+// to a clearer spot nearby, leaving thin witness lines connecting back to
+// the true measured points -- instead of that second drag just relocating
+// the whole thing, points and all. Also added a "Label side" selector
+// (Top/Bottom or Left/Right depending on the line's own orientation) so a
+// dimension's text can be told which side of the line to sit on, rather
+// than only ever the one fixed side. (2) The plan name set in "Rename this
+// plan" now also stamps as a title banner across the top of every exported
+// PNG/PDF, and a small watermark ("UTZLINE Site Measure" plus the save date
+// and time) now appears in the bottom-right corner of every export --
+// neither ever appears in the live canvas or in the reopenable project
+// file, only in what's exported/shared/printed. (3) A real crash-and-
+// reopen report on large PDF plans, traced to two things stacking memory
+// on big architectural sheets: PDF page thumbnails/imports were encoded as
+// PNG (a much larger in-memory buffer) instead of JPEG, and a multi-page
+// PDF's thumbnails all rendered concurrently instead of one at a time.
+// Both fixed without reducing the actual import resolution.)
+// (v33: two fixes from real feedback. (1) Every drag handle (endpoint dots,
+// corner squares, cap-arm squares, the label resize square) used to be
+// painted with a fully opaque white fill -- fine for the handle's own
+// colored ring to stay legible, but it also hid exactly what a handle is
+// usually being dragged onto (a wall corner in the photo, another line's
+// endpoint) right underneath itself. Handle interiors are now semi-
+// transparent, so whatever's underneath still shows through while
+// aligning; the outline ring stays fully visible and just as grabbable.
+// (2) A real report with an actual exported PDF attached: a plan drawn
+// straight onto "New" (a blank canvas, no underlying photo) came back an
+// illegible mess. Traced to the page itself coming out only 336x235pt (4.7
+// x3.3 inches) -- the PDF's page-size math assumes world units are real
+// photo pixels (fine for an actual photo, which is normally thousands of
+// pixels wide), but "New"'s blank canvas is just a fixed small on-screen
+// drawing surface with no relationship to physical size at all. The
+// underlying vector text was always perfectly crisp; it just lived on a
+// postage-stamp page, so every viewer's default fit-to-page zoom showed it
+// as an illegible blur. A blank-canvas plan's exported PDF now gets
+// enlarged to a normal document size -- costs nothing since a flat white
+// backdrop has no real resolution to lose -- while a real photo-backed
+// plan's export, however small the photo, is completely unaffected.)
+// (v34: four fixes from real field-test feedback, all with the offset-
+// dimension-with-witness-lines feature (v32) or its own overlay features
+// as the root cause. (1) "Label side left/right is backwards, top/bottom
+// is fine" -- the panel's Label side dropdown always called side "a"
+// Top/Left and side "b" Bottom/Right, but which way each side actually
+// pushes the label depends on the line's own draw direction (which end is
+// x1,y1 vs x2,y2), not just whether it's horizontal or vertical. A
+// horizontal line drawn left-to-right happened to match the old fixed
+// labels; a vertical line in either direction, or a horizontal line drawn
+// right-to-left, did not. The dropdown's words are now derived from the
+// exact same direction-aware formula that actually positions the label, so
+// they always describe reality. (2) The export watermark came back mostly
+// solid black and illegible in real exported PDFs -- it used a single
+// stroked text element relying on paint-order:"stroke fill" to keep its
+// white fill on top of its own black outline, but svg2pdf.js doesn't honor
+// paint-order for text, so the thick black stroke painted OVER the fill
+// instead of under it. Switched the watermark to the same proven
+// three-separate-element halo technique already used correctly for every
+// dimension/callout/text label, and changed its fill to the app's own
+// orange accent color to match the icons, as asked. (3) The watermark
+// used to sit inside the plan's own existing content bounds, which could
+// land it directly on top of a real measurement -- exports now reserve a
+// dedicated footer strip below the plan's real content, sized into the
+// canvas/page from the start, so the watermark never overlaps anything
+// drawn. (4) Dragging a dimension's line to add a perpendicular offset (v32)
+// left the real, styled delimiter (tick/arrow, with its own configurable
+// arm lengths) stranded at the true measured point instead of moving with
+// the visible line -- one arm overlapping the witness line, the other a
+// disconnected-looking stub. The real delimiter (and its drag handles) now
+// move with the offset line, exactly where they're grabbed on screen, while
+// a small fixed-size marker stays behind at the true point to show exactly
+// where the measurement was taken. A dimension with no offset, and a plain
+// line object, are both completely unchanged.)
+var CACHE_NAME = "redline-cache-v34";
 
 var PRECACHE_URLS = [
   "./",

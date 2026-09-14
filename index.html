@@ -228,6 +228,16 @@
   svg#svgRoot{width:100%; height:100%; display:block; touch-action:none;}
   svg#svgRoot.pan-ready{cursor:grab;}
   svg#svgRoot.panning{cursor:grabbing;}
+  /* Every drag handle (endpoint dots, corner/cap squares, the label resize
+     square) is drawn with an opaque white fill so its colored ring stays
+     legible on any background -- but that same opaque fill was hiding
+     exactly the thing a handle is usually being dragged onto (a wall corner
+     in the photo, another line's endpoint) right underneath itself. Cutting
+     the FILL alone down to semi-transparent keeps every handle's outline
+     ring fully crisp and grabbable while letting whatever's underneath show
+     through for precise alignment. Only affects fill -- stroked outlines
+     and connector lines (drawn with fill:none already) are untouched. */
+  .ui-handle{fill-opacity:0.4;}
 
   .empty-hint{
     position:absolute; left:50%; top:14px; transform:translateX(-50%);
@@ -785,7 +795,7 @@
   // change, at the same time as service-worker.js's CACHE_NAME and the
   // delivered zip's filename, so all three always agree on the same number
   // instead of drifting out of sync with each other.
-  var APP_VERSION = "v31";
+  var APP_VERSION = "v34";
   var SVG_NS = "http://www.w3.org/2000/svg";
   // Embedded copies (base64 woff2, weight 500 -- the only weight the app
   // ever measures or draws text with) of the two custom Google Fonts used
@@ -1596,12 +1606,32 @@
   // by the "New" button to start a fresh file: no leftover photo, no
   // leftover annotations, just a blank surface ready for Open/Insert/paste,
   // or to draw straight onto if there's nothing to trace over yet.
+  // Memoized -- it's deterministic (same fixed size, same flat fill every
+  // time), and isBlankCanvasState() below calls it on every PDF export just
+  // to compare data URLs, which would otherwise re-encode a fresh PNG on
+  // every single export for no reason.
+  var BLANK_CANVAS_CACHE = null;
   function generateBlank(){
+    if (BLANK_CANVAS_CACHE) return BLANK_CANVAS_CACHE;
     var W = 1400, H = 980;
     var c = document.createElement("canvas"); c.width = W; c.height = H;
     var ctx = c.getContext("2d");
     ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
-    return { dataURL: c.toDataURL("image/png"), w: W, h: H };
+    BLANK_CANVAS_CACHE = { dataURL: c.toDataURL("image/png"), w: W, h: H };
+    return BLANK_CANVAS_CACHE;
+  }
+  // True when the CURRENT plan's base "photo" is actually just that plain
+  // white New-file canvas rather than a real photo/PDF page -- detected by
+  // comparing against generateBlank()'s own (deterministic) output rather
+  // than a stored flag, so this works retroactively on plans saved before
+  // this check existed, with no project-file format change needed. A real
+  // photo matching this exactly is not a realistic possibility. Used by the
+  // PDF export to know it's safe to enlarge a too-small page (see
+  // renderExportPdfBlob) -- a flat white fill loses nothing by being
+  // stretched, unlike an actual photo.
+  function isBlankCanvasState(){
+    var blank = generateBlank();
+    return state.imageW === blank.w && state.imageH === blank.h && state.imageDataURL === blank.dataURL;
   }
   function loadSampleAnnotations(){
     var d1 = makeDimension(120, 900, 1120, 900, "#c8391c");
@@ -1701,10 +1731,58 @@
   // or how long the label text is. Runs again whenever the text changes,
   // as long as the label hasn't been dragged/rotated/resized by hand
   // (label.autoPos) — once the user takes manual control it stays put.
+  // label.side picks WHICH of the line's two perpendicular sides it clears
+  // to -- "a" (the original, only, side before this existed) or "b" (the
+  // opposite side); the panel's "Label side" selector is what sets this,
+  // labeled Top/Bottom or Left/Right depending on the line's own
+  // orientation. Undefined (every dimension drawn before this existed)
+  // behaves exactly like "a" always did, so old plans/backups reposition
+  // identically to before.
+  // A dimension's visible connecting line can be dragged away from the two
+  // true measured points (see dragMode "dimOffset" below) while the
+  // delimiters stay exactly on the measured points -- the classic
+  // architectural "offset dimension line with witness lines" look. This
+  // computes where that visible line's two ends actually sit: the true
+  // points themselves when lineOffset is 0/unset (the ordinary, unchanged
+  // case), otherwise the true points translated perpendicular to the line
+  // by lineOffset. Direction is unaffected -- a perpendicular offset is a
+  // pure parallel translation, so the line's angle (and therefore the
+  // delimiter orientation, which is always taken from the true points) never
+  // changes.
+  function dimensionOffsetPoints(obj){
+    if (!obj.lineOffset) return { p1: { x: obj.x1, y: obj.y1 }, p2: { x: obj.x2, y: obj.y2 }, perp: { x: 0, y: 0 } };
+    var dx = obj.x2 - obj.x1, dy = obj.y2 - obj.y1;
+    var len = Math.hypot(dx, dy) || 1e-6;
+    var px = -dy / len, py = dx / len;
+    return {
+      p1: { x: obj.x1 + px * obj.lineOffset, y: obj.y1 + py * obj.lineOffset },
+      p2: { x: obj.x2 + px * obj.lineOffset, y: obj.y2 + py * obj.lineOffset },
+      perp: { x: px, y: py }
+    };
+  }
+  // Where a dimension's OWN delimiter (tick/arrow) and cap-arm drag handles
+  // actually belong once the line has been dragged into an offset: at the
+  // visible offset line's own end, same as the label -- not at the true
+  // measured point. The true point still gets its own small fixed marker
+  // (see renderObject) so it's clear exactly where the measurement was
+  // taken, but the real, resizable, styled delimiter moves WITH the line
+  // you're actually looking at, the same way it always sat right at the
+  // line's own end before lineOffset existed. A line object (no offset
+  // concept at all) and a lineOffset:0 dimension both fall through to the
+  // true point unchanged.
+  function dimensionCapBase(obj, end){
+    if (obj.type === "dimension" && obj.lineOffset){
+      var dop = dimensionOffsetPoints(obj);
+      return end === 1 ? dop.p1 : dop.p2;
+    }
+    return end === 1 ? { x: obj.x1, y: obj.y1 } : { x: obj.x2, y: obj.y2 };
+  }
   function repositionDimensionLabel(obj){
     var label = obj.label;
-    var midx = (obj.x1 + obj.x2) / 2, midy = (obj.y1 + obj.y2) / 2;
-    var ang = Math.atan2(obj.y2 - obj.y1, obj.x2 - obj.x1) - Math.PI / 2;
+    var dop = dimensionOffsetPoints(obj);
+    var midx = (dop.p1.x + dop.p2.x) / 2, midy = (dop.p1.y + dop.p2.y) / 2;
+    var sideSign = label.side === "b" ? 1 : -1;
+    var ang = Math.atan2(obj.y2 - obj.y1, obj.x2 - obj.x1) + sideSign * Math.PI / 2;
     var px = Math.cos(ang), py = Math.sin(ang);
     var w = textWidth(label.text, label.fontSize, label.family), h = textHeight(label.text, label.fontSize);
     var clearance = Math.abs(px) * (w / 2) + Math.abs(py) * (h / 2) + label.fontSize * 0.4;
@@ -1724,7 +1802,13 @@
       // arm length changes.
       cap1a: null, cap1b: null, cap2a: null, cap2b: null,
       endStyle: defaultStyle().dimensionEnds, color: c, strokeWidth: defaultStroke(),
-      label: { text: "", x: 0, y: 0, rot: 0, fontSize: defaultFontSize(), family: "mono", color: c, autoPos: true }
+      // How far the VISIBLE dimension line (and its label) has been slid
+      // away from the true measured points, perpendicular to the line --
+      // 0 means "right on the measured points", same as before this field
+      // existed. Delimiters always stay put at x1,y1/x2,y2 regardless; see
+      // dimensionOffsetPoints().
+      lineOffset: 0,
+      label: { text: "", x: 0, y: 0, rot: 0, fontSize: defaultFontSize(), family: "mono", color: c, autoPos: true, side: "a" }
     };
     repositionDimensionLabel(obj);
     return obj;
@@ -1862,8 +1946,8 @@
       var t = el("text", {
         x: label.x, y: label.y, "font-size": label.fontSize, fill: fill,
         "font-family": fontStack(label.family), "font-weight": 500,
-        transform: "rotate(" + label.rot + " " + label.x + " " + label.y + ")",
-        "text-anchor": "middle", "dominant-baseline": "middle",
+        transform: "rotate(" + (label.rot || 0) + " " + label.x + " " + label.y + ")",
+        "text-anchor": label.anchor || "middle", "dominant-baseline": "middle",
         stroke: stroke, "stroke-width": stroke_width,
         "stroke-linejoin": "round", "paint-order": "stroke fill"
       });
@@ -1911,7 +1995,7 @@
   function endOn(obj, end){ return obj["end" + end + "On"] !== false; }
   function effectiveEndStyle(obj, end){ return endOn(obj, end) ? obj.endStyle : "none"; }
   function armTipPos(obj, end, arm){
-    var base = end === 1 ? { x: obj.x1, y: obj.y1 } : { x: obj.x2, y: obj.y2 };
+    var base = dimensionCapBase(obj, end);
     var outAng = end === 1 ? Math.atan2(obj.y1 - obj.y2, obj.x1 - obj.x2) : Math.atan2(obj.y2 - obj.y1, obj.x2 - obj.x1);
     var len = capField(obj, end, arm);
     if (obj.endStyle === "arrow"){
@@ -1927,24 +2011,72 @@
     var g = el("g", { "data-id": obj.id, class: isPreview ? "ui-preview" : "obj" });
     if (!isPreview && objOpacity(obj) < 1) g.setAttribute("opacity", objOpacity(obj));
     if (obj.type === "dimension" || obj.type === "line"){
-      // Angle for the tick/arrow orientation always comes from the line
-      // itself; the delimiter always sits right on the line's own endpoint
-      // — dragging its handle only changes how LONG it is drawn (per end,
-      // independently), never where it sits.
+      // Angle for the tick/arrow orientation always comes from the TRUE
+      // line -- unaffected by any offset, since a perpendicular offset is a
+      // pure parallel translation and never changes direction.
       var ang1 = deg(Math.atan2(obj.y1 - obj.y2, obj.x1 - obj.x2));
       var ang2 = deg(Math.atan2(obj.y2 - obj.y1, obj.x2 - obj.x1));
-      var p1 = endCapPath(obj.x1, obj.y1, ang1, effectiveEndStyle(obj, 1), capField(obj, 1, "a"), capField(obj, 1, "b"));
-      var p2 = endCapPath(obj.x2, obj.y2, ang2, effectiveEndStyle(obj, 2), capField(obj, 2, "a"), capField(obj, 2, "b"));
       var lineHalo = haloW(obj.strokeWidth), lineHaloOuter = haloOuterW(obj.strokeWidth);
-      g.appendChild(el("line", { x1: obj.x1, y1: obj.y1, x2: obj.x2, y2: obj.y2, stroke: "#ffffff", "stroke-width": lineHaloOuter, "stroke-linecap": "round" }));
+      // A dimension with a non-zero lineOffset draws its connecting line
+      // (and label) away from the true x1,y1/x2,y2 points, with thin
+      // witness lines bridging the gap -- same idea as an architectural
+      // extension line. A plain "line" object never has this field, and a
+      // dimension with lineOffset 0/unset renders exactly as before.
+      var hasOffset = obj.type === "dimension" && obj.lineOffset;
+      var dop = hasOffset ? dimensionOffsetPoints(obj) : null;
+      var lx1 = hasOffset ? dop.p1.x : obj.x1, ly1 = hasOffset ? dop.p1.y : obj.y1;
+      var lx2 = hasOffset ? dop.p2.x : obj.x2, ly2 = hasOffset ? dop.p2.y : obj.y2;
+      // The REAL delimiter (the styled, resizable tick/arrow, cap1a/cap1b
+      // and all) moves WITH the visible line -- it sits at whichever point
+      // (true or offset) dimensionCapBase says, the same place its own drag
+      // handles live (see armTipPos). Earlier this stayed pinned to the
+      // true point even after an offset drag, which left a full-size
+      // delimiter sitting alone out at the true point, one arm overlapping
+      // the witness line and the other a disconnected-looking stub -- "the
+      // centre of the delimiter" a real report described. A dimension with
+      // no offset has cap base === true point, so this is unchanged there.
+      var cap1 = dimensionCapBase(obj, 1), cap2 = dimensionCapBase(obj, 2);
+      var p1 = endCapPath(cap1.x, cap1.y, ang1, effectiveEndStyle(obj, 1), capField(obj, 1, "a"), capField(obj, 1, "b"));
+      var p2 = endCapPath(cap2.x, cap2.y, ang2, effectiveEndStyle(obj, 2), capField(obj, 2, "a"), capField(obj, 2, "b"));
+      // With the real delimiter now living at the offset line's end, the
+      // true measured point (where the witness line starts) still needs
+      // its own small, fixed-size mark -- independent of whatever length
+      // the real delimiter's arms have been dragged to -- so it's still
+      // clear exactly where the measurement was taken, per the original
+      // "delimiters land exactly on the measured points" design. Small and
+      // fixed rather than the object's own (possibly large) cap field, and
+      // only drawn once there's actually an offset to mark the start of.
+      var trueP1 = null, trueP2 = null;
+      if (hasOffset){
+        var trueMarkLen = Math.max(3, obj.strokeWidth * 1.3);
+        trueP1 = endCapPath(obj.x1, obj.y1, ang1, effectiveEndStyle(obj, 1), trueMarkLen, trueMarkLen);
+        trueP2 = endCapPath(obj.x2, obj.y2, ang2, effectiveEndStyle(obj, 2), trueMarkLen, trueMarkLen);
+      }
+      if (hasOffset){
+        var witnessSw = Math.max(1, obj.strokeWidth * 0.4);
+        var witnessHalo = haloW(witnessSw), witnessHaloOuter = haloOuterW(witnessSw);
+        g.appendChild(el("line", { x1: obj.x1, y1: obj.y1, x2: lx1, y2: ly1, stroke: "#ffffff", "stroke-width": witnessHaloOuter }));
+        g.appendChild(el("line", { x1: obj.x2, y1: obj.y2, x2: lx2, y2: ly2, stroke: "#ffffff", "stroke-width": witnessHaloOuter }));
+        g.appendChild(el("line", { x1: obj.x1, y1: obj.y1, x2: lx1, y2: ly1, stroke: "#000000", "stroke-width": witnessHalo }));
+        g.appendChild(el("line", { x1: obj.x2, y1: obj.y2, x2: lx2, y2: ly2, stroke: "#000000", "stroke-width": witnessHalo }));
+        g.appendChild(el("line", { x1: obj.x1, y1: obj.y1, x2: lx1, y2: ly1, stroke: obj.color, "stroke-width": witnessSw }));
+        g.appendChild(el("line", { x1: obj.x2, y1: obj.y2, x2: lx2, y2: ly2, stroke: obj.color, "stroke-width": witnessSw }));
+      }
+      g.appendChild(el("line", { x1: lx1, y1: ly1, x2: lx2, y2: ly2, stroke: "#ffffff", "stroke-width": lineHaloOuter, "stroke-linecap": "round" }));
       if (p1) g.appendChild(el("path", { d: p1, stroke: "#ffffff", "stroke-width": lineHaloOuter, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
       if (p2) g.appendChild(el("path", { d: p2, stroke: "#ffffff", "stroke-width": lineHaloOuter, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
-      g.appendChild(el("line", { x1: obj.x1, y1: obj.y1, x2: obj.x2, y2: obj.y2, stroke: "#000000", "stroke-width": lineHalo, "stroke-linecap": "round" }));
+      if (trueP1) g.appendChild(el("path", { d: trueP1, stroke: "#ffffff", "stroke-width": lineHaloOuter, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      if (trueP2) g.appendChild(el("path", { d: trueP2, stroke: "#ffffff", "stroke-width": lineHaloOuter, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      g.appendChild(el("line", { x1: lx1, y1: ly1, x2: lx2, y2: ly2, stroke: "#000000", "stroke-width": lineHalo, "stroke-linecap": "round" }));
       if (p1) g.appendChild(el("path", { d: p1, stroke: "#000000", "stroke-width": lineHalo, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
       if (p2) g.appendChild(el("path", { d: p2, stroke: "#000000", "stroke-width": lineHalo, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
-      g.appendChild(el("line", { x1: obj.x1, y1: obj.y1, x2: obj.x2, y2: obj.y2, stroke: obj.color, "stroke-width": obj.strokeWidth, "stroke-linecap": "round" }));
+      if (trueP1) g.appendChild(el("path", { d: trueP1, stroke: "#000000", "stroke-width": lineHalo, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      if (trueP2) g.appendChild(el("path", { d: trueP2, stroke: "#000000", "stroke-width": lineHalo, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      g.appendChild(el("line", { x1: lx1, y1: ly1, x2: lx2, y2: ly2, stroke: obj.color, "stroke-width": obj.strokeWidth, "stroke-linecap": "round" }));
       if (p1) g.appendChild(el("path", { d: p1, stroke: obj.color, "stroke-width": obj.strokeWidth, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
       if (p2) g.appendChild(el("path", { d: p2, stroke: obj.color, "stroke-width": obj.strokeWidth, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      if (trueP1) g.appendChild(el("path", { d: trueP1, stroke: obj.color, "stroke-width": obj.strokeWidth, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      if (trueP2) g.appendChild(el("path", { d: trueP2, stroke: obj.color, "stroke-width": obj.strokeWidth, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round" }));
       if (obj.type === "dimension") g.appendChild(renderLabelGroup(obj.label, "label"));
     } else if (obj.type === "angle"){
       var aHalo = haloW(obj.strokeWidth), aHaloOuter = haloOuterW(obj.strokeWidth);
@@ -2210,7 +2342,18 @@
       var o = state.objects[i];
       if (o.hidden || (o.locked && !includeLocked)) continue;
       if (o.type === "dimension" || o.type === "line"){
-        if (distPointToSeg(worldPt.x, worldPt.y, o.x1, o.y1, o.x2, o.y2) <= tol) return o;
+        if (o.type === "dimension" && o.lineOffset){
+          // The connecting line itself has moved off the true points -- hit
+          // -test the actually-visible shape (offset line + the two witness
+          // lines back to the true points) instead of the now-invisible
+          // true segment.
+          var dop2 = dimensionOffsetPoints(o);
+          if (distPointToSeg(worldPt.x, worldPt.y, dop2.p1.x, dop2.p1.y, dop2.p2.x, dop2.p2.y) <= tol) return o;
+          if (distPointToSeg(worldPt.x, worldPt.y, o.x1, o.y1, dop2.p1.x, dop2.p1.y) <= tol) return o;
+          if (distPointToSeg(worldPt.x, worldPt.y, o.x2, o.y2, dop2.p2.x, dop2.p2.y) <= tol) return o;
+        } else {
+          if (distPointToSeg(worldPt.x, worldPt.y, o.x1, o.y1, o.x2, o.y2) <= tol) return o;
+        }
         if (o.type === "dimension" && hitLabelHandle(worldPt, o.label) === "labelbody") return o;
       } else if (o.type === "rect"){
         var x0 = Math.min(o.x, o.x + o.w), x1 = Math.max(o.x, o.x + o.w);
@@ -2342,7 +2485,16 @@
         // will use, so a plain tap (or a real drag right after) never
         // mistakes either change for an actual drag.
         var dragWp = screenToWorld(startClient.x, startClient.y);
-        dragMode = { kind: "move", id: hitO.id, start: deepClone(hitO), startWorld: dragWp };
+        // Dragging a dimension's BODY (as opposed to one of its p1/p2
+        // endpoint handles, handled above via hitHandle) is the "second
+        // motion" from the field report: it slides the visible line/label
+        // away from the true measured points rather than moving the whole
+        // object, so the delimiters stay exactly where they were measured.
+        if (hitO.type === "dimension"){
+          dragMode = { kind: "dimOffset", id: hitO.id, start: deepClone(hitO), startWorld: dragWp };
+        } else {
+          dragMode = { kind: "move", id: hitO.id, start: deepClone(hitO), startWorld: dragWp };
+        }
         return;
       }
       state.selectedId = null; renderAll();
@@ -2482,6 +2634,22 @@
       renderAll();
       return;
     }
+    if (dragMode.kind === "dimOffset"){
+      var od = findObj(dragMode.id);
+      if (!od){ return; }
+      var dxo = wp.x - dragMode.startWorld.x, dyo = wp.y - dragMode.startWorld.y;
+      var ddx = od.x2 - od.x1, ddy = od.y2 - od.y1;
+      var dlen = Math.hypot(ddx, ddy) || 1e-6;
+      var perpx = -ddy / dlen, perpy = ddx / dlen;
+      // Project the raw drag delta onto the line's own perpendicular --
+      // dragging along the line itself shouldn't change the offset at all,
+      // only motion crosswise to it should.
+      var proj = dxo * perpx + dyo * perpy;
+      od.lineOffset = (dragMode.start.lineOffset || 0) + proj;
+      if (od.label.autoPos) repositionDimensionLabel(od);
+      renderAll();
+      return;
+    }
     if (dragMode.kind === "handle"){
       applyHandleDrag(dragMode, wp, e.shiftKey);
       renderAll();
@@ -2524,7 +2692,7 @@
         return;
       }
       finalizeDrawing();
-    } else if (dragMode.kind === "move" || dragMode.kind === "handle"){
+    } else if (dragMode.kind === "move" || dragMode.kind === "handle" || dragMode.kind === "dimOffset"){
       pushHistory();
     }
     dragMode = null;
@@ -2628,7 +2796,7 @@
       // the new arm length. Always anchored on the endpoint — only the
       // length changes, and the other arm/end is untouched.
       var end = dm.which.charAt(3), arm = dm.which.charAt(4);
-      var base = end === "1" ? { x: o.x1, y: o.y1 } : { x: o.x2, y: o.y2 };
+      var base = dimensionCapBase(o, end === "1" ? 1 : 2);
       var len = Math.hypot(wp.x - base.x, wp.y - base.y);
       o["cap" + end + arm] = clamp(len, 3, 400);
       return;
@@ -3253,6 +3421,55 @@
         etRow.appendChild(etWrap); panel.appendChild(etRow);
       }
     }
+    // Which side of the line the dimension's own length label sits on --
+    // only meaningful once an actual dimension exists (needs a real line
+    // to know which way is "perpendicular" in the first place), so this
+    // doesn't show for the bare drawing tool the way Color/Ends do. Worded
+    // to match how THIS line actually sits -- Top/Bottom for a near-
+    // horizontal one, Left/Right for a near-vertical one -- rather than an
+    // abstract "A/B", since that's how the choice actually reads on screen.
+    if (obj && obj.type === "dimension"){
+      // Label each option with the word matching what it ACTUALLY does for
+      // THIS line, computed the same way repositionDimensionLabel itself
+      // picks a direction (base angle + sideSign*90deg) -- rather than
+      // assuming "a" is always Top/Left and "b" always Bottom/Right. That
+      // assumption broke as soon as a line was drawn in the other
+      // direction (e.g. bottom-to-top instead of top-to-bottom): the
+      // offset math is direction-aware (it has to be, to know which way is
+      // perpendicular), but a fixed a=Top/b=Bottom label text isn't, so a
+      // vertical line drawn "upward" showed Left and Right backwards from
+      // what each option actually did. Deriving the word from the real
+      // resulting direction is correct for every line, any draw direction.
+      var baseAngSide = Math.atan2(obj.y2 - obj.y1, obj.x2 - obj.x1);
+      function sideWord(sign){
+        var ang = baseAngSide + sign * Math.PI / 2;
+        var px = Math.cos(ang), py = Math.sin(ang);
+        if (Math.abs(px) >= Math.abs(py)) return px > 0 ? "Right" : "Left";
+        return py > 0 ? "Bottom" : "Top";
+      }
+      var sideOptions = [["a", sideWord(-1)], ["b", sideWord(1)]];
+      var sdRow = document.createElement("div"); sdRow.className = "panel-row";
+      var sdLab = document.createElement("span"); sdLab.className = "panel-label"; sdLab.textContent = "Label side";
+      sdRow.appendChild(sdLab);
+      var sdSel = document.createElement("select"); sdSel.className = "mini";
+      var curSide = obj.label.side === "b" ? "b" : "a";
+      sideOptions.forEach(function(o){
+        var opt = document.createElement("option"); opt.value = o[0]; opt.textContent = o[1];
+        if (curSide === o[0]) opt.selected = true;
+        sdSel.appendChild(opt);
+      });
+      sdSel.addEventListener("change", function(){
+        obj.label.side = sdSel.value;
+        // A deliberate side choice takes effect immediately, even if this
+        // label had previously been dragged by hand -- same "explicit
+        // instruction wins" reasoning as picking an Ends style overriding
+        // whatever the label's own drag history was.
+        obj.label.autoPos = true;
+        repositionDimensionLabel(obj);
+        pushHistory(); renderAll();
+      });
+      sdRow.appendChild(sdSel); panel.appendChild(sdRow);
+    }
     // font size (text-bearing)
     var labelObj = obj ? (obj.type === "text" ? obj : obj.label) : null;
     var hasFont = labelObj || state.tool === "text" || state.tool === "callout" || state.tool === "dimension" || state.tool === "angle";
@@ -3563,8 +3780,37 @@
       var canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.round(viewport.width));
       canvas.height = Math.max(1, Math.round(viewport.height));
-      return page.render({ canvasContext: canvas.getContext("2d"), viewport: viewport }).promise.then(function(){
-        return { dataUrl: canvas.toDataURL("image/png"), w: canvas.width, h: canvas.height };
+      var ctx = canvas.getContext("2d");
+      // JPEG (below) has no alpha channel -- fill white first so any part
+      // of the page a PDF leaves transparent doesn't turn solid black once
+      // encoded, same reasoning Save PDF's own photo compositing already
+      // follows for exactly the same format switch.
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      return page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function(){
+        // Real report: the app crashing on a large PDF plan with low-
+        // memory symptoms. A big architectural sheet at this import
+        // resolution (up to PDF_IMPORT_MAX_DIM on the longest side) is
+        // tens of millions of pixels -- PNG's lossless encoding needs a
+        // proportionally huge intermediate buffer AND produces a base64
+        // string several times bigger than the equivalent JPEG, held in
+        // memory on top of the canvas's own raw pixel buffer at the exact
+        // moment memory is already most stretched. Switching to JPEG
+        // (already exactly how Save PDF treats every embedded photo, and
+        // for the same reason) cuts both the encode cost and the
+        // resulting string size roughly an order of magnitude for a
+        // photographic/scanned plan, with the import resolution itself
+        // completely unchanged.
+        var dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+        var w = canvas.width, h = canvas.height;
+        // Explicitly release the canvas's backing pixel buffer the moment
+        // its pixels are safely encoded, rather than waiting for the
+        // canvas object itself to be garbage-collected on its own
+        // schedule -- on a multi-sheet PDF (rendered one page after
+        // another, see showPdfPagePicker below) that timing gap is exactly
+        // where peak memory stacks up across sheets.
+        canvas.width = 0; canvas.height = 0;
+        return { dataUrl: dataUrl, w: w, h: h };
       });
     });
   }
@@ -3713,9 +3959,23 @@
   var pdfPickerResolve = null;
   function showPdfPagePicker(pdfDoc){
     var n = pdfDoc.numPages;
-    var thumbPromises = [];
-    for (var i = 1; i <= n; i++) thumbPromises.push(renderPdfPage(pdfDoc, i, 0.22));
-    return Promise.all(thumbPromises).then(function(thumbs){
+    // Rendered ONE PAGE AT A TIME, not all at once via Promise.all -- a
+    // real drawing set can easily be dozens of sheets, and firing every
+    // page's render concurrently held that many canvases and pdf.js
+    // render states in memory simultaneously, adding straight onto the
+    // same low-memory crash risk the main full-resolution import already
+    // guards against (see renderPdfPage above). Sequential keeps peak
+    // memory to roughly one thumbnail at a time -- the picker fills in a
+    // little more gradually on a big set instead of appearing all at
+    // once, a worthwhile trade for not crashing on a large multi-sheet set.
+    var thumbs = [];
+    var chain = Promise.resolve();
+    for (var i = 1; i <= n; i++){
+      (function(pageNum){
+        chain = chain.then(function(){ return renderPdfPage(pdfDoc, pageNum, 0.22); }).then(function(t){ thumbs.push(t); });
+      })(i);
+    }
+    return chain.then(function(){
       return new Promise(function(resolve){
         pdfPickerResolve = resolve;
         pdfPickerGrid.innerHTML = "";
@@ -4012,8 +4272,17 @@
       return { x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + pad };
     }
     if (obj.type === "line" || obj.type === "dimension"){
-      var lx0 = Math.min(obj.x1, obj.x2), lx1 = Math.max(obj.x1, obj.x2);
-      var ly0 = Math.min(obj.y1, obj.y2), ly1 = Math.max(obj.y1, obj.y2);
+      var xs = [obj.x1, obj.x2], ys = [obj.y1, obj.y2];
+      // A dimension slid off its true points (lineOffset) draws its visible
+      // line and witness lines out at the offset points too -- fold those
+      // into the box as well so recentering/export bounds don't clip the
+      // actually-visible line.
+      if (obj.type === "dimension" && obj.lineOffset){
+        var dopB = dimensionOffsetPoints(obj);
+        xs.push(dopB.p1.x, dopB.p2.x); ys.push(dopB.p1.y, dopB.p2.y);
+      }
+      var lx0 = Math.min.apply(null, xs), lx1 = Math.max.apply(null, xs);
+      var ly0 = Math.min.apply(null, ys), ly1 = Math.max.apply(null, ys);
       // Delimiter arms/arrowheads can reach a bit past the endpoints --
       // pad generously rather than replicate armTipPos's exact geometry.
       pad = capLenDefault(obj) * 2 + haloOuterW(obj.strokeWidth);
@@ -4044,6 +4313,22 @@
     state.objects.forEach(function(o){ b = unionBounds(b, objectBounds(o)); });
     return b;
   }
+  // What both export paths actually size their canvas/page to: the plan's
+  // own content bounds, PLUS a reserved strip along the bottom just for the
+  // watermark. Computed up front (before either export path sizes
+  // anything), so the watermark always lands in genuinely empty space added
+  // for it rather than wherever cb.y1 already happened to land -- a real
+  // report was the watermark landing directly on top of a measurement sitting
+  // in the bottom-right corner of an actual plan, not a hypothetical corner
+  // case. contentY1 keeps the pre-margin bottom edge so addExportOverlays
+  // knows exactly where the reserved strip starts.
+  function computeExportBounds(){
+    var cb = computeContentBounds();
+    var contentW = cb.x1 - cb.x0;
+    var wmSize = clamp(contentW * 0.011, 11, 32);
+    var footerH = Math.round(wmSize * 3.6);
+    return { x0: cb.x0, y0: cb.y0, x1: cb.x1, y1: cb.y1 + footerH, wmSize: wmSize, contentY1: cb.y1 };
+  }
   // Shared by both export paths: a clean copy of the annotation layer with
   // no transform (world's pan/zoom stripped, coordinates back in native
   // image space) and none of the editor-only UI (selection handles, the
@@ -4059,6 +4344,77 @@
     var grid = clone.querySelector("#gridOverlay");
     if (grid) grid.remove();
     return clone;
+  }
+  // "Saved 14 Sep 2026, 1:24 PM" -- the moment the export/backup was
+  // actually rendered, not anything stored on the plan itself, so it's
+  // always the true save time even if the plan was started days earlier.
+  function formatSaveStamp(d){
+    var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    var h = d.getHours(), ampm = h >= 12 ? "PM" : "AM";
+    var h12 = h % 12; if (h12 === 0) h12 = 12;
+    var mins = String(d.getMinutes()).padStart(2, "0");
+    return "Saved " + d.getDate() + " " + MONTHS[d.getMonth()] + " " + d.getFullYear() + ", " + h12 + ":" + mins + " " + ampm;
+  }
+  // Stamps identification onto the SAVED OUTPUT only (Save PDF, Save PNG,
+  // and folder/downloads-api auto-backup all funnel through
+  // renderExportBlob/renderExportPdfBlob) -- a title banner across the top
+  // with the plan's own name, and a small watermark in the bottom-right
+  // corner naming the app and exactly when this copy was saved. Requested
+  // so a plan handed off to the manufacture team -- as a printed sheet, a
+  // forwarded PDF, or just a phone photo of one -- still carries its own
+  // identification once it's away from the app, rather than relying on a
+  // filename that can get renamed or stripped by whatever it travels
+  // through (email, a shared drive, a phone's own photo app).
+  //
+  // Appended straight onto the export CLONE, never onto state.objects --
+  // so this never appears on the live canvas, can't be selected, dragged
+  // or deleted by accident, and never gets written into the reopenable
+  // .utzline.json project file (reopening a backup should show exactly
+  // what was drawn, not a stamp from whenever it happened to be saved).
+  // The title banner's white-on-dark-band text has no stroke at all, so a
+  // plain filled <text> renders it correctly everywhere. The watermark
+  // used to be a single stroked <text> relying on paint-order:"stroke fill"
+  // to keep its fill on top of its own outline -- fine on screen and in the
+  // rasterized PNG path, but a real exported PDF showed it coming out
+  // mostly solid black with only a thin light rim: svg2pdf.js doesn't honor
+  // paint-order for text, so it painted the (thick, near-opaque) stroke
+  // OVER the fill instead of under it. renderLabelGroup's three-separate-
+  // element halo technique (already proven correct through svg2pdf.js for
+  // every dimension/callout/text label) never depends on paint-order at
+  // all -- each pass is simply drawn after the last -- so the watermark now
+  // reuses it directly instead of its own fragile one-element version.
+  function addExportOverlays(clone, cb){
+    var contentW = cb.x1 - cb.x0;
+
+    var name = (state.fileBase || "").trim();
+    if (name){
+      var titleSize = clamp(contentW * 0.02, 16, 72);
+      var bannerH = Math.round(titleSize * 2.2);
+      clone.appendChild(el("rect", { x: cb.x0, y: cb.y0, width: contentW, height: bannerH, fill: "rgba(0,0,0,0.55)" }));
+      var titleEl = el("text", {
+        x: cb.x0 + contentW / 2, y: cb.y0 + bannerH / 2,
+        "text-anchor": "middle", "dominant-baseline": "middle",
+        "font-family": fontStack("sans"), "font-size": titleSize, "font-weight": 500,
+        fill: "#ffffff"
+      });
+      titleEl.textContent = name;
+      clone.appendChild(titleEl);
+    }
+
+    // Sits in the reserved footer strip below the plan's own content (see
+    // computeExportBounds) -- never on top of an actual measurement,
+    // however the plan happens to be laid out. contentY1 is where the
+    // plan's real content ends and the reserved strip begins; fall back to
+    // cb.y1 itself for a caller that didn't reserve one.
+    var wmSize = cb.wmSize || clamp(contentW * 0.011, 11, 32);
+    var pad = wmSize * 0.8;
+    var footerTop = cb.contentY1 != null ? cb.contentY1 : cb.y1;
+    var footerMidY = (footerTop + cb.y1) / 2;
+    var wmText = "UTZLINE Site Measure\n" + formatSaveStamp(new Date());
+    clone.appendChild(renderLabelGroup({
+      text: wmText, x: cb.x1 - pad, y: footerMidY, rot: 0,
+      fontSize: wmSize, family: "sans", color: "#c8391c", anchor: "end"
+    }, "export-watermark"));
   }
   function renderExportBlob(){
     var clone = cloneWorldForExport();
@@ -4090,7 +4446,8 @@
     // Content bounds instead of the fixed imageW/imageH -- a pasted-in image
     // object (or anything else) placed outside the base photo's own
     // rectangle must not get cropped out of the export.
-    var cb = computeContentBounds();
+    var cb = computeExportBounds();
+    addExportOverlays(clone, cb);
     var contentW = cb.x1 - cb.x0, contentH = cb.y1 - cb.y0;
     var maxDim = Math.max(contentW, contentH);
     var scale = clamp(16000 / maxDim, 1, 6);
@@ -4235,11 +4592,12 @@
   }
   function renderExportPdfBlob(){
     if (!pdfLibsReady()) return Promise.reject(new Error("pdf libs not loaded"));
-    // Content bounds instead of the fixed imageW/imageH -- see
-    // computeContentBounds() above: a pasted-in image object placed outside
-    // the base photo's own rectangle must not get cropped out of the PDF
-    // either, and the page itself is sized to the full composition.
-    var cb = computeContentBounds();
+    // Content bounds (plus a reserved watermark strip -- see
+    // computeExportBounds) instead of the fixed imageW/imageH: a pasted-in
+    // image object placed outside the base photo's own rectangle must not
+    // get cropped out of the PDF either, and the page itself is sized to
+    // the full composition.
+    var cb = computeExportBounds();
     var contentW = cb.x1 - cb.x0, contentH = cb.y1 - cb.y0;
     var imageObjs = state.objects.filter(function(o){ return o.type === "image"; });
     // The base photo AND every pasted-in image object are embedded with
@@ -4284,6 +4642,33 @@
       });
 
       var pageW = contentW * PX_TO_PT, pageH = contentH * PX_TO_PT;
+      // PX_TO_PT is calibrated for a real photo's pixel density -- fine for
+      // any plan actually backed by one, since a real site photo is
+      // typically thousands of pixels wide and comes out a normal-sized
+      // page anyway. But a plan drawn straight onto "New" (a blank white
+      // canvas, no photo at all -- see isBlankCanvasState()) has world
+      // units that were never real photo pixels in the first place, just
+      // arbitrary on-screen drawing units at a fixed 1400x980 canvas size
+      // -- the same ratio applied there produced an actual real-world
+      // report: a set of dimension lines exported to a 336x235pt (4.7x3.3
+      // inch) PDF page, small enough that every viewer's default fit-to-
+      // page zoom made the text look like an illegible blur even though the
+      // underlying vectors are perfectly crisp (confirmed directly -- it's
+      // a "the whole page is postage-stamp sized" problem, not a rendering
+      // defect). Since that white backdrop is a flat fill with nothing to
+      // lose from being stretched (unlike a real photo), and the overlay is
+      // pure vector, blowing the WHOLE page up together (photo backdrop and
+      // vector annotations both use pageW/pageH below, so nothing shifts
+      // relative to anything else) to a normal document size costs nothing
+      // and fixes exactly this.
+      if (isBlankCanvasState()){
+        var longEdgePt = Math.max(pageW, pageH);
+        var MIN_BLANK_PAGE_LONG_EDGE_PT = 792; // US Letter's long edge -- a familiar "normal document" size
+        if (longEdgePt > 0 && longEdgePt < MIN_BLANK_PAGE_LONG_EDGE_PT){
+          var pageBoost = MIN_BLANK_PAGE_LONG_EDGE_PT / longEdgePt;
+          pageW *= pageBoost; pageH *= pageBoost;
+        }
+      }
       var doc = new window.jspdf.jsPDF({
         orientation: pageW >= pageH ? "landscape" : "portrait",
         unit: "pt",
@@ -4299,6 +4684,7 @@
       // svg2pdf never sees an <image> element at all.
       var clone = cloneWorldForExport();
       clone.querySelectorAll("image").forEach(function(n){ n.remove(); });
+      addExportOverlays(clone, cb);
       var svgEl = document.createElementNS(SVG_NS, "svg");
       svgEl.setAttribute("xmlns", SVG_NS);
       svgEl.setAttribute("width", contentW);
