@@ -26,12 +26,16 @@ CACHE_NAME (with a comment saying what changed) so installed copies
 actually pick up the update instead of serving a stale cached shell.
 """
 
+import json
 import re
 import sys
 from pathlib import Path
 
 SRC = Path("/home/claude/redline/source.html")
 OUT = Path(__file__).parent / "index.html"
+MANIFEST = Path(__file__).parent / "manifest.json"
+
+APP_VERSION_RE = re.compile(r'var APP_VERSION = "(v\d+)"')
 
 CDN_REPLACEMENTS = [
     (
@@ -61,30 +65,42 @@ LOCAL_FONT_FACE_BLOCK = (
     "</style>\n"
 )
 
-PWA_HEAD_TAGS = (
-    # Without this, mobile browsers (Chrome on Android included, inside the
-    # installed TWA) fall back to laying the page out at a virtual desktop
-    # width (~980px) and then zooming the whole thing out to fit the real
-    # screen -- everything looks small, and CSS media queries keyed to the
-    # real device width (like the phone-toolbar layout below) never match,
-    # so portrait falls back to the cramped multi-row wrap layout instead of
-    # the intended single scrolling row of full-size buttons. Landscape
-    # happens to look "close enough" without this fix purely because a
-    # landscape phone's width is already closer to that assumed 980px, not
-    # because anything is actually working correctly. The claude.ai Artifact
-    # preview never showed this bug because the Artifact platform inserts
-    # its own viewport meta tag automatically -- this self-hosted PWA build
-    # has to do it explicitly.
-    '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-    '<link rel="manifest" href="./manifest.json">\n'
-    '<meta name="theme-color" content="#1b2224">\n'
-    '<link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">\n'
-    '<link rel="apple-touch-icon" href="./icons/icon-192.png">\n'
-    '<meta name="mobile-web-app-capable" content="yes">\n'
-    '<meta name="apple-mobile-web-app-capable" content="yes">\n'
-    '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\n'
-    '<meta name="apple-mobile-web-app-title" content="UTZLINE Site Measure">\n'
-)
+def pwa_head_tags(version):
+    # The manifest/icon links carry a "?v=<APP_VERSION>" cache-buster.
+    # Without it, a browser that already has this origin's favicon and
+    # install icon cached can keep serving those cached bitmaps forever --
+    # favicon caches in particular are notorious for ignoring normal
+    # Cache-Control revalidation and surviving a full uninstall/reinstall
+    # of an installed PWA, since the OS/browser regenerates the pinned
+    # shortcut icon from whatever it has cached for that exact icon URL,
+    # not from a fresh fetch. Changing the URL itself (not just the file
+    # contents behind it) is the only fix that reliably busts that cache,
+    # so every icon-bearing href here must vary with APP_VERSION.
+    return (
+        # Without this, mobile browsers (Chrome on Android included, inside
+        # the installed TWA) fall back to laying the page out at a virtual
+        # desktop width (~980px) and then zooming the whole thing out to fit
+        # the real screen -- everything looks small, and CSS media queries
+        # keyed to the real device width (like the phone-toolbar layout
+        # below) never match, so portrait falls back to the cramped
+        # multi-row wrap layout instead of the intended single scrolling row
+        # of full-size buttons. Landscape happens to look "close enough"
+        # without this fix purely because a landscape phone's width is
+        # already closer to that assumed 980px, not because anything is
+        # actually working correctly. The claude.ai Artifact preview never
+        # showed this bug because the Artifact platform inserts its own
+        # viewport meta tag automatically -- this self-hosted PWA build has
+        # to do it explicitly.
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f'<link rel="manifest" href="./manifest.json?v={version}">\n'
+        '<meta name="theme-color" content="#1b2224">\n'
+        f'<link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png?v={version}">\n'
+        f'<link rel="apple-touch-icon" href="./icons/icon-192.png?v={version}">\n'
+        '<meta name="mobile-web-app-capable" content="yes">\n'
+        '<meta name="apple-mobile-web-app-capable" content="yes">\n'
+        '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\n'
+        '<meta name="apple-mobile-web-app-title" content="UTZLINE Site Measure">\n'
+    )
 
 SERVICE_WORKER_SCRIPT = (
     "\n\n<script>\n"
@@ -103,6 +119,11 @@ def build():
     if not SRC.exists():
         sys.exit(f"Source not found: {SRC}")
     html = SRC.read_text(encoding="utf-8")
+
+    version_match = APP_VERSION_RE.search(html)
+    if not version_match:
+        sys.exit("Could not find `var APP_VERSION = \"vNN\";` in source.html")
+    version = version_match.group(1)
 
     if not html.lstrip().startswith("<title>"):
         sys.exit(
@@ -124,7 +145,7 @@ def build():
 
     # 3. Insert the PWA head tags right after the <title> line.
     title_line_end = html.index("\n", html.index("<title>")) + 1
-    html = html[:title_line_end] + PWA_HEAD_TAGS + html[title_line_end:]
+    html = html[:title_line_end] + pwa_head_tags(version) + html[title_line_end:]
 
     # 4. Wrap in a full document.
     html = '<!DOCTYPE html>\n<html lang="en">\n' + html + "\n</html>\n"
@@ -136,6 +157,19 @@ def build():
 
     OUT.write_text(html, encoding="utf-8")
     print(f"Wrote {OUT} ({len(html)} bytes)")
+
+    # 6. Keep manifest.json's icon URLs cache-busted the same way and for
+    #    the same reason as the <link> tags above -- browsers use the
+    #    manifest's icon list (not just <link rel="icon">) to generate an
+    #    installed PWA's home-screen/taskbar icon, and that path is just as
+    #    prone to caching the old bitmap under an unchanged URL.
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    for icon in manifest.get("icons", []):
+        icon["src"] = icon["src"].split("?", 1)[0] + f"?v={version}"
+    MANIFEST.write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"Wrote {MANIFEST} (icons cache-busted to v={version})")
 
 
 if __name__ == "__main__":

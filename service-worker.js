@@ -372,22 +372,34 @@
 // auto-flip it drove are gone. Mirroring a photo now always happens the
 // same way, whether you catch it before or after you've started
 // annotating.)
-var CACHE_NAME = "redline-cache-v39";
+// (v40: manifest.json and the icon files are now requested with a
+// "?v=<version>" query string -- matching build.py's cache-busted
+// <link rel="manifest">/<link rel="icon">/<link rel="apple-touch-icon">
+// hrefs and manifest.json's own icon "src" entries -- because browsers
+// were found to cache an installed PWA's favicon/home-screen icon by
+// URL and keep serving the old bitmap indefinitely, surviving even a
+// full uninstall/reinstall of the app, since a plain filename never
+// looked like a new resource to fetch. Changing the URL itself on every
+// version is what actually busts that cache. PRECACHE_URLS below must
+// use the exact same versioned URLs so this cache-first service worker
+// serves (and refreshes) the right ones.)
+var CACHE_NAME = "redline-cache-v40";
+var ICON_VERSION = CACHE_NAME.replace("redline-cache-", "");
 
 var PRECACHE_URLS = [
   "./",
   "./index.html",
-  "./manifest.json",
+  "./manifest.json?v=" + ICON_VERSION,
   "./jspdf.umd.min.js",
   "./svg2pdf.umd.min.js",
   "./pdf.min.js",
   "./pdf.worker.min.js",
   "./sans.woff2",
   "./mono.woff2",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./icons/icon-192-maskable.png",
-  "./icons/icon-512-maskable.png"
+  "./icons/icon-192.png?v=" + ICON_VERSION,
+  "./icons/icon-512.png?v=" + ICON_VERSION,
+  "./icons/icon-192-maskable.png?v=" + ICON_VERSION,
+  "./icons/icon-512-maskable.png?v=" + ICON_VERSION
 ];
 
 self.addEventListener("install", function(event){
