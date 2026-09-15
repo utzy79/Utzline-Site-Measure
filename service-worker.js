@@ -324,7 +324,55 @@
 // a small fixed-size marker stays behind at the true point to show exactly
 // where the measurement was taken. A dimension with no offset, and a plain
 // line object, are both completely unchanged.)
-var CACHE_NAME = "redline-cache-v34";
+// (v35: two requests from real use. (1) "Mirror imported images" -- a new
+// standing toggle (top toolbar, next to Layers) that flips every
+// subsequently opened/inserted/pasted/dropped photo or plan horizontally,
+// pixel-for-pixel, before it's ever shown or stored. Fixes a real
+// annoyance: a phone's front/selfie camera often saves photos mirrored to
+// match its on-screen preview, and a plan photographed off a mirror or
+// reflective glass comes out backwards too. Persists like auto-backup's
+// own settings (stays on until turned off, since a phone that mirrors does
+// it every time), and covers every way a photo gets into the app -- Open,
+// Insert image, paste, and drag-drop all funnel through the same one
+// choke point. (2) The flattened PDF/PNG/autobackup filenames used to tag
+// themselves "_FLATTENED" -- renamed to "_UTZLINE" throughout, so what
+// shows up in a Downloads folder or an emailed attachment reads as the
+// app's own name rather than an internal implementation word.)
+// (v36: the business's real logo, supplied directly by its owner, replaces
+// two stand-ins that were never the real thing. (1) The four PWA icons
+// (install/home-screen/app-switcher art) were a generic placeholder --
+// regenerated from the actual logo, including "maskable" versions with
+// extra padding so Android's circular/squircle icon masks don't clip the
+// house-roof/ruler mark or the wordmark beneath it. (2) The export
+// watermark in the bottom-right corner of every saved PDF/PNG used to spell
+// out "UTZLINE Site Measure" as plain text -- it's now the actual logo
+// image, with the save timestamp kept as its own text alongside it (the one
+// piece of information a static logo can't carry on its own).)
+// (v37: the logo now also appears in the app's own header, next to the
+// existing "UTZLINE Site Measure / plan markup" text (top-left of the
+// toolbar) -- a separate, smaller crop of just the pictorial roof/ruler
+// mark with its background keyed out to transparent, so it sits cleanly on
+// the header bar in both light and dark theme rather than repeating the
+// wordmark a second time right next to the text that already spells it
+// out.)
+// (v38: "select image then press the button to mirror it" -- an image
+// already on the plan can now be flipped horizontally after the fact,
+// not just future imports. Select a pasted-in photo and choose Mirror
+// from its right-click menu to flip just that one image in place. Or
+// click on the base site photo itself (anywhere on it, with nothing else
+// selected) and choose Mirror from ITS right-click menu -- that flips the
+// photo AND repositions every dimension/callout/etc. so everything stays
+// correctly aligned with the now-flipped photo, even if annotations were
+// already drawn before the mirroring need was noticed.)
+// (v39: removed the standing "mirror future imports" toolbar toggle --
+// v38's select-an-image-then-Mirror-it (a pasted-in photo via its
+// right-click menu, or the base site photo via its own) covers the same
+// need without a separate setting to remember to turn on beforehand, so
+// the toggle button, its persisted on/off state, and the import-time
+// auto-flip it drove are gone. Mirroring a photo now always happens the
+// same way, whether you catch it before or after you've started
+// annotating.)
+var CACHE_NAME = "redline-cache-v39";
 
 var PRECACHE_URLS = [
   "./",
